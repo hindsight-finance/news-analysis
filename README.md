@@ -6,7 +6,7 @@ The core hypothesis: after a news-release candle's high or low is swept, does pr
 
 ## Data
 
-Tracked Parquet inputs live in `data/`:
+Local Parquet inputs live in ignored `data/`:
 
 - `economic_events.parquet` — US economic event calendar, `2010-01-01` to `2026-03-31`
 - `nq_1m.parquet` — NQ 1-minute OHLCV data, `2010-06-06` to `2026-03-15`
@@ -18,6 +18,7 @@ Tracked Parquet inputs live in `data/`:
 - `exploration.py` — creates exploratory charts and `charts/exploration/summary_by_event.csv`
 - `causal_analysis.py` — trains simple interpretable models and creates causal-factor charts/CSVs
 - `injection.py` — creates per-event release-candle and 10-minute range histograms
+- `forward_returns.py` — creates 30m/90m forward-return charts contextualized by release-candle direction
 
 ## Outputs
 
@@ -36,6 +37,12 @@ Main generated outputs:
   - `logistic_coefficients.png`
   - `event_edge.png`
   - `event_stats.csv`
+- `charts/forward_returns/`
+  - `forward_returns_by_event.csv`
+  - `forward_returns_30m_raw_by_direction.png`
+  - `forward_returns_90m_raw_by_direction.png`
+  - `forward_returns_30m_direction_normalized.png`
+  - `forward_returns_90m_direction_normalized.png`
 
 Latest full run summary:
 
@@ -57,6 +64,7 @@ Run the full analysis:
 python3 main.py
 python3 exploration.py
 python3 causal_analysis.py
+python3 forward_returns.py
 ```
 
 Run tests:

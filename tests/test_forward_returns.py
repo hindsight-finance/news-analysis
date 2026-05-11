@@ -57,3 +57,34 @@ def test_build_forward_returns_skips_missing_future_candle():
     assert result["news_candle_direction"].tolist() == ["down"]
     assert result["raw_forward_return_pct"].round(2).tolist() == [-1.0]
     assert result["direction_normalized_return_pct"].round(2).tolist() == [1.0]
+
+from forward_returns import write_outputs
+
+
+def test_write_outputs_creates_csv_and_expected_charts(tmp_path):
+    df = pd.DataFrame(
+        {
+            "event_type": ["US Test", "US Test", "US Test", "US Test"],
+            "event_datetime": pd.to_datetime(
+                ["2024-01-02 13:30:00", "2024-01-03 13:30:00", "2024-01-02 13:30:00", "2024-01-03 13:30:00"], utc=True
+            ),
+            "horizon_minutes": [30, 30, 90, 90],
+            "news_candle_direction": ["up", "down", "up", "down"],
+            "raw_forward_return_pct": [1.0, -0.5, 2.0, -1.0],
+            "direction_normalized_return_pct": [1.0, 0.5, 2.0, 1.0],
+            "release_open": [100.0, 100.0, 100.0, 100.0],
+            "release_close": [101.0, 99.0, 101.0, 99.0],
+            "future_close": [102.01, 98.505, 103.02, 98.01],
+        }
+    )
+
+    write_outputs(df, tmp_path)
+
+    expected = {
+        "forward_returns_by_event.csv",
+        "forward_returns_30m_raw_by_direction.png",
+        "forward_returns_90m_raw_by_direction.png",
+        "forward_returns_30m_direction_normalized.png",
+        "forward_returns_90m_direction_normalized.png",
+    }
+    assert expected == {p.name for p in tmp_path.iterdir()}
