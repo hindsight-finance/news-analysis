@@ -36,6 +36,10 @@ def test_build_forward_returns_computes_raw_and_normalized_returns():
     assert result["news_candle_direction"].tolist() == ["up", "up"]
     assert result["raw_forward_return_pct"].round(2).tolist() == [2.0, -2.0]
     assert result["direction_normalized_return_pct"].round(2).tolist() == [2.0, -2.0]
+    assert result["raw_mfe_pct"].round(2).tolist() == [1.98, 2.97]
+    assert result["raw_mae_pct"].round(2).tolist() == [-0.99, -0.99]
+    assert result["direction_normalized_mfe_pct"].round(2).tolist() == [1.98, 2.97]
+    assert result["direction_normalized_mae_pct"].round(2).tolist() == [-0.99, -0.99]
 
 
 def test_build_forward_returns_skips_missing_future_candle():
@@ -57,6 +61,10 @@ def test_build_forward_returns_skips_missing_future_candle():
     assert result["news_candle_direction"].tolist() == ["down"]
     assert result["raw_forward_return_pct"].round(2).tolist() == [-1.0]
     assert result["direction_normalized_return_pct"].round(2).tolist() == [1.0]
+    assert result["raw_mfe_pct"].round(2).tolist() == [1.0]
+    assert result["raw_mae_pct"].round(2).tolist() == [-1.0]
+    assert result["direction_normalized_mfe_pct"].round(2).tolist() == [1.0]
+    assert result["direction_normalized_mae_pct"].round(2).tolist() == [-1.0]
 
 from forward_returns import write_outputs
 
@@ -75,6 +83,12 @@ def test_write_outputs_creates_csv_and_expected_charts(tmp_path):
             "release_open": [100.0, 100.0, 100.0, 100.0],
             "release_close": [101.0, 99.0, 101.0, 99.0],
             "future_close": [102.01, 98.505, 103.02, 98.01],
+            "window_high": [103.0, 101.0, 104.0, 102.0],
+            "window_low": [100.0, 98.0, 99.0, 97.0],
+            "raw_mfe_pct": [1.98, 2.02, 2.97, 3.03],
+            "raw_mae_pct": [-0.99, -1.01, -1.98, -2.02],
+            "direction_normalized_mfe_pct": [1.98, 1.01, 2.97, 2.02],
+            "direction_normalized_mae_pct": [-0.99, -2.02, -1.98, -3.03],
         }
     )
 
@@ -86,5 +100,9 @@ def test_write_outputs_creates_csv_and_expected_charts(tmp_path):
         "forward_returns_90m_raw_by_direction.png",
         "forward_returns_30m_direction_normalized.png",
         "forward_returns_90m_direction_normalized.png",
+        "forward_returns_30m_mae_mfe_by_direction.png",
+        "forward_returns_90m_mae_mfe_by_direction.png",
+        "forward_returns_30m_normalized_mae_mfe_scatter.png",
+        "forward_returns_90m_normalized_mae_mfe_scatter.png",
     }
     assert expected == {p.name for p in tmp_path.iterdir()}

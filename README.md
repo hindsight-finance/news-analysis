@@ -43,6 +43,10 @@ Main generated outputs:
   - `forward_returns_90m_raw_by_direction.png`
   - `forward_returns_30m_direction_normalized.png`
   - `forward_returns_90m_direction_normalized.png`
+  - `forward_returns_30m_mae_mfe_by_direction.png`
+  - `forward_returns_90m_mae_mfe_by_direction.png`
+  - `forward_returns_30m_normalized_mae_mfe_scatter.png`
+  - `forward_returns_90m_normalized_mae_mfe_scatter.png`
 
 Latest full run summary:
 

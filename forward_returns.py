@@ -69,6 +69,26 @@ def direction_normalized_return(raw_return_pct: float, direction: str) -> float:
     return np.nan
 
 
+def direction_normalized_profile(
+    release_close: float,
+    window_high: float,
+    window_low: float,
+    direction: str,
+) -> tuple[float, float]:
+    """Return continuation-context MFE and MAE percentages."""
+    if direction == "up":
+        return (
+            ((window_high - release_close) / release_close) * 100,
+            ((window_low - release_close) / release_close) * 100,
+        )
+    if direction == "down":
+        return (
+            ((release_close - window_low) / release_close) * 100,
+            ((release_close - window_high) / release_close) * 100,
+        )
+    return (np.nan, np.nan)
+
+
 def build_forward_returns(
     events: pd.DataFrame,
     nq: pd.DataFrame,
@@ -98,6 +118,19 @@ def build_forward_returns(
             future = nq.iloc[future_pos]
             future_close = float(future["Close"])
             raw_return = ((future_close - release_close) / release_close) * 100
+            window = nq.iloc[release_pos + 1:future_pos + 1]
+            if window.empty:
+                continue
+            window_high = float(window["High"].max())
+            window_low = float(window["Low"].min())
+            raw_mfe = ((window_high - release_close) / release_close) * 100
+            raw_mae = ((window_low - release_close) / release_close) * 100
+            normalized_mfe, normalized_mae = direction_normalized_profile(
+                release_close,
+                window_high,
+                window_low,
+                direction,
+            )
             rows.append(
                 {
                     "event_type": event["title"],
@@ -111,6 +144,12 @@ def build_forward_returns(
                     "future_close": future_close,
                     "raw_forward_return_pct": raw_return,
                     "direction_normalized_return_pct": direction_normalized_return(raw_return, direction),
+                    "window_high": window_high,
+                    "window_low": window_low,
+                    "raw_mfe_pct": raw_mfe,
+                    "raw_mae_pct": raw_mae,
+                    "direction_normalized_mfe_pct": normalized_mfe,
+                    "direction_normalized_mae_pct": normalized_mae,
                 }
             )
 
@@ -145,6 +184,21 @@ def summarize_returns(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         .reset_index()
     )
     return raw_summary, normalized_summary
+
+
+def summarize_path_profiles(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = df[df["direction_normalized_mfe_pct"].notna()].copy()
+    return (
+        normalized.groupby("horizon_minutes", dropna=False, observed=False)
+        .agg(
+            count=("direction_normalized_mfe_pct", "size"),
+            mean_mfe_pct=("direction_normalized_mfe_pct", "mean"),
+            median_mfe_pct=("direction_normalized_mfe_pct", "median"),
+            mean_mae_pct=("direction_normalized_mae_pct", "mean"),
+            median_mae_pct=("direction_normalized_mae_pct", "median"),
+        )
+        .reset_index()
+    )
 
 
 def plot_raw_by_direction(df: pd.DataFrame, horizon: int, output_path: Path) -> None:
@@ -185,12 +239,71 @@ def plot_direction_normalized(df: pd.DataFrame, horizon: int, output_path: Path)
     plt.close(fig)
 
 
+def plot_mae_mfe_by_direction(df: pd.DataFrame, horizon: int, output_path: Path) -> None:
+    horizon_df = df[df["horizon_minutes"] == horizon].copy()
+    directions = [d for d in ["up", "down", "flat"] if d in set(horizon_df["news_candle_direction"])]
+    positions: list[float] = []
+    data: list[pd.Series] = []
+    labels: list[str] = []
+    for idx, direction in enumerate(directions, start=1):
+        subset = horizon_df[horizon_df["news_candle_direction"] == direction]
+        positions.extend([idx - 0.18, idx + 0.18])
+        data.extend([subset["raw_mae_pct"], subset["raw_mfe_pct"]])
+        labels.extend([f"{direction}\nMAE", f"{direction}\nMFE"])
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.boxplot(data, positions=positions, widths=0.28, showfliers=False)
+    ax.axhline(0, color="black", linewidth=1, alpha=0.7)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels)
+    ax.set_title(f"{horizon}m Raw MAE/MFE by News Candle Direction (n={len(horizon_df)})")
+    ax.set_ylabel("Excursion from release close (%)")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_normalized_mae_mfe_scatter(df: pd.DataFrame, horizon: int, output_path: Path) -> None:
+    horizon_df = df[
+        (df["horizon_minutes"] == horizon)
+        & df["direction_normalized_mfe_pct"].notna()
+        & df["direction_normalized_mae_pct"].notna()
+    ].copy()
+    colors = {"up": "#e74c3c", "down": "#2ecc71", "flat": "#7f8c8d"}
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    for direction, subset in horizon_df.groupby("news_candle_direction", observed=False):
+        ax.scatter(
+            subset["direction_normalized_mae_pct"],
+            subset["direction_normalized_mfe_pct"],
+            s=12,
+            alpha=0.35,
+            label=direction,
+            color=colors.get(direction, "#4c78a8"),
+        )
+    ax.axhline(0, color="black", linewidth=1, alpha=0.7)
+    ax.axvline(0, color="black", linewidth=1, alpha=0.7)
+    ax.set_title(f"{horizon}m Direction-Normalized MAE/MFE Profile (n={len(horizon_df)})")
+    ax.set_xlabel("Normalized MAE (%)\nnegative = adverse excursion")
+    ax.set_ylabel("Normalized MFE (%)\npositive = favorable continuation excursion")
+    ax.legend(title="Candle direction")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
 def write_outputs(df: pd.DataFrame, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_dir / "forward_returns_by_event.csv", index=False)
     for horizon in sorted(df["horizon_minutes"].unique()):
         plot_raw_by_direction(df, int(horizon), output_dir / f"forward_returns_{int(horizon)}m_raw_by_direction.png")
         plot_direction_normalized(df, int(horizon), output_dir / f"forward_returns_{int(horizon)}m_direction_normalized.png")
+        plot_mae_mfe_by_direction(df, int(horizon), output_dir / f"forward_returns_{int(horizon)}m_mae_mfe_by_direction.png")
+        plot_normalized_mae_mfe_scatter(
+            df,
+            int(horizon),
+            output_dir / f"forward_returns_{int(horizon)}m_normalized_mae_mfe_scatter.png",
+        )
 
 
 def run(
@@ -206,12 +319,15 @@ def run(
         raise ValueError("No forward return rows produced; check event/NQ timestamp alignment")
     write_outputs(df, output_dir)
     raw_summary, normalized_summary = summarize_returns(df)
+    path_summary = summarize_path_profiles(df)
     print(f"Built {len(df)} event/horizon forward-return rows")
     print(f"Wrote outputs to {output_dir}")
     print("\nRaw returns by horizon and release candle direction:")
     print(raw_summary.round(4).to_string(index=False))
     print("\nDirection-normalized returns by horizon:")
     print(normalized_summary.round(4).to_string(index=False))
+    print("\nDirection-normalized MAE/MFE path profiles by horizon:")
+    print(path_summary.round(4).to_string(index=False))
 
 
 def parse_args() -> argparse.Namespace:
