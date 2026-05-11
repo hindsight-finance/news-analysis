@@ -18,7 +18,7 @@ Local Parquet inputs live in ignored `data/`:
 - `exploration.py` — creates exploratory charts and `charts/exploration/summary_by_event.csv`
 - `causal_analysis.py` — trains simple interpretable models and creates causal-factor charts/CSVs
 - `injection.py` — creates per-event release-candle and 10-minute range histograms
-- `forward_returns.py` — creates 30m/90m forward-return charts contextualized by release-candle direction
+- `forward_returns.py` — creates 15m/30m/45m/60m/90m forward-return charts contextualized by release-candle direction
 
 ## Outputs
 
@@ -39,14 +39,11 @@ Main generated outputs:
   - `event_stats.csv`
 - `charts/forward_returns/`
   - `forward_returns_by_event.csv`
-  - `forward_returns_30m_raw_by_direction.png`
-  - `forward_returns_90m_raw_by_direction.png`
-  - `forward_returns_30m_direction_normalized.png`
-  - `forward_returns_90m_direction_normalized.png`
-  - `forward_returns_30m_mae_mfe_by_direction.png`
-  - `forward_returns_90m_mae_mfe_by_direction.png`
-  - `forward_returns_30m_normalized_mae_mfe_scatter.png`
-  - `forward_returns_90m_normalized_mae_mfe_scatter.png`
+  - `forward_returns_<horizon>m_raw_by_direction.png`
+  - `forward_returns_<horizon>m_direction_normalized.png`
+  - `forward_returns_<horizon>m_mae_mfe_by_direction.png`
+  - `forward_returns_<horizon>m_normalized_mae_mfe_scatter.png`
+  - default horizons: `15`, `30`, `45`, `60`, `90` minutes
 
 Latest full run summary:
 

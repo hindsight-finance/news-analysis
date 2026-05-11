@@ -106,3 +106,9 @@ def test_write_outputs_creates_csv_and_expected_charts(tmp_path):
         "forward_returns_90m_normalized_mae_mfe_scatter.png",
     }
     assert expected == {p.name for p in tmp_path.iterdir()}
+
+
+def test_default_horizons_include_intermediate_timeframes():
+    from forward_returns import DEFAULT_HORIZONS
+
+    assert DEFAULT_HORIZONS == (15, 30, 45, 60, 90)

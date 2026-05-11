@@ -19,7 +19,7 @@ import pandas as pd
 DEFAULT_EVENTS = Path("data/economic_events.parquet")
 DEFAULT_NQ = Path("data/nq_1m.parquet")
 DEFAULT_OUTPUT_DIR = Path("charts/forward_returns")
-DEFAULT_HORIZONS = (30, 90)
+DEFAULT_HORIZONS = (15, 30, 45, 60, 90)
 
 
 def ensure_utc(series: pd.Series) -> pd.Series:
