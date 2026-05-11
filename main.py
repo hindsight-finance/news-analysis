@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import time
+from zoneinfo import ZoneInfo
 
 # Setup paths
 DATA_DIR = Path(__file__).parent / "data"
@@ -20,27 +21,68 @@ OUTPUT_FILE = DATA_DIR / "sweep_analysis_results.parquet"
 TRADING_DAY_END = time(16, 0)
 
 
+def ensure_utc(series: pd.Series) -> pd.Series:
+    """Return a timezone-aware UTC datetime series."""
+    converted = pd.to_datetime(series)
+    if converted.dt.tz is None:
+        return converted.dt.tz_localize('UTC')
+    return converted.dt.tz_convert('UTC')
+
+
+def timestamp_ns_utc(timestamp: pd.Timestamp) -> int:
+    """Convert a timestamp to UTC nanoseconds."""
+    ts = pd.Timestamp(timestamp)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize('UTC')
+    else:
+        ts = ts.tz_convert('UTC')
+    return ts.value
+
+
+def find_sorted_pos(values: np.ndarray, value: int) -> int | None:
+    """Return exact row position in a sorted int64 timestamp array."""
+    pos = int(np.searchsorted(values, value, side='left'))
+    if pos < len(values) and values[pos] == value:
+        return pos
+    return None
+
+
+def add_lookup_tables(nq: pd.DataFrame) -> pd.DataFrame:
+    """Attach sorted timestamp arrays for fast event access."""
+    nq.attrs['utc_values'] = nq['DateTime_UTC'].dt.tz_convert('UTC').to_numpy(dtype='datetime64[ns]').astype('int64')
+    nq.attrs['et_values'] = pd.to_datetime(nq['DateTime_ET']).to_numpy(dtype='datetime64[ns]').astype('int64')
+    return nq
+
+
 def load_data():
     """Load economic events and NQ 1m price data."""
     events = pd.read_parquet(DATA_DIR / "economic_events.parquet")
     nq = pd.read_parquet(DATA_DIR / "nq_1m.parquet")
+
+    if 'DateTime_UTC' not in nq.columns and 'datetime_utc' in nq.columns:
+        nq = nq.rename(columns={'datetime_utc': 'DateTime_UTC'})
     
     # Ensure DateTime columns are properly formatted
-    nq['DateTime_UTC'] = pd.to_datetime(nq['DateTime_UTC']).dt.tz_localize('UTC')
-    nq['DateTime_ET'] = pd.to_datetime(nq['DateTime_ET'])
-    events['datetime_utc'] = pd.to_datetime(events['datetime_utc'])
-    
-    if events['datetime_utc'].dt.tz is None:
-        events['datetime_utc'] = events['datetime_utc'].dt.tz_localize('UTC')
+    nq['DateTime_UTC'] = ensure_utc(nq['DateTime_UTC'])
+    if 'DateTime_ET' not in nq.columns:
+        nq['DateTime_ET'] = nq['DateTime_UTC'].dt.tz_convert('America/New_York').dt.tz_localize(None)
+    else:
+        nq['DateTime_ET'] = pd.to_datetime(nq['DateTime_ET'])
+    events['datetime_utc'] = ensure_utc(events['datetime_utc'])
     
     # Sort NQ by time for efficient lookups
     nq = nq.sort_values('DateTime_UTC').reset_index(drop=True)
+    nq = add_lookup_tables(nq)
     
     return events, nq
 
 
 def get_release_candle(nq: pd.DataFrame, event_time: pd.Timestamp) -> pd.Series | None:
     """Get the release candle for an event."""
+    utc_values = nq.attrs.get('utc_values')
+    if utc_values is not None:
+        pos = find_sorted_pos(utc_values, timestamp_ns_utc(event_time))
+        return nq.iloc[pos] if pos is not None else None
     mask = nq['DateTime_UTC'] == event_time
     candle = nq[mask]
     return candle.iloc[0] if not candle.empty else None
@@ -49,11 +91,18 @@ def get_release_candle(nq: pd.DataFrame, event_time: pd.Timestamp) -> pd.Series 
 def get_candles_until_eod(nq: pd.DataFrame, start_time: pd.Timestamp) -> pd.DataFrame:
     """Get all candles from start_time until end of trading day (4:00 PM ET)."""
     # Get the start candle to find the trading day
-    start_mask = nq['DateTime_UTC'] == start_time
-    if not start_mask.any():
+    utc_values = nq.attrs.get('utc_values')
+    start_idx = find_sorted_pos(utc_values, timestamp_ns_utc(start_time)) if utc_values is not None else None
+    if start_idx is None:
+        if utc_values is not None:
+            return pd.DataFrame()
+        start_mask = nq['DateTime_UTC'] == start_time
+        if not start_mask.any():
+            return pd.DataFrame()
+        start_idx = nq[start_mask].index[0]
+    if start_idx is None:
         return pd.DataFrame()
-    
-    start_idx = nq[start_mask].index[0]
+
     start_et = nq.loc[start_idx, 'DateTime_ET']
     
     # Get end of day timestamp (4:00 PM ET same day, or handle overnight)
@@ -62,6 +111,11 @@ def get_candles_until_eod(nq: pd.DataFrame, start_time: pd.Timestamp) -> pd.Data
     # If event is after 4 PM, use next day's 4 PM
     if start_et.time() >= TRADING_DAY_END:
         end_of_day = end_of_day + pd.Timedelta(days=1)
+
+    if 'utc_values' in nq.attrs:
+        end_utc = end_of_day.tz_localize(ZoneInfo('America/New_York')).tz_convert('UTC')
+        end_pos = np.searchsorted(nq.attrs['utc_values'], end_utc.value, side='right')
+        return nq.iloc[start_idx + 1:end_pos]
     
     # Filter candles: after start_time AND before end of day
     mask = (nq['DateTime_UTC'] > start_time) & (nq['DateTime_ET'] <= end_of_day)
@@ -70,6 +124,10 @@ def get_candles_until_eod(nq: pd.DataFrame, start_time: pd.Timestamp) -> pd.Data
 
 def get_candle_at_time(nq: pd.DataFrame, target_et: pd.Timestamp) -> pd.Series | None:
     """Get a specific candle by ET timestamp."""
+    et_values = nq.attrs.get('et_values')
+    if et_values is not None:
+        pos = find_sorted_pos(et_values, pd.Timestamp(target_et).value)
+        return nq.iloc[pos] if pos is not None else None
     mask = nq['DateTime_ET'] == target_et
     candle = nq[mask]
     return candle.iloc[0] if not candle.empty else None
@@ -150,57 +208,38 @@ def analyze_event(nq: pd.DataFrame, event_time: pd.Timestamp, event_type: str) -
     if subsequent.empty:
         return None
     
-    # Initialize tracking variables
-    first_sweep = None
-    first_sweep_time = None
-    first_sweep_idx = None
-    opposite_swept = False
-    opposite_sweep_time = None
-    synthetic_box_breached = False
-    mae_before_reversal = 0.0
-    
-    high_swept = False
-    low_swept = False
-    
-    # Scan for sweeps
-    for idx, candle in subsequent.iterrows():
-        candle_high = candle['High']
-        candle_low = candle['Low']
-        candle_time = candle['DateTime_UTC']
-        
-        # Check for high sweep
-        if not high_swept and candle_high > data_high:
-            high_swept = True
-            if first_sweep is None:
-                first_sweep = 'high'
-                first_sweep_time = candle_time
-                first_sweep_idx = idx
-        
-        # Check for low sweep
-        if not low_swept and candle_low < data_low:
-            low_swept = True
-            if first_sweep is None:
-                first_sweep = 'low'
-                first_sweep_time = candle_time
-                first_sweep_idx = idx
-        
-        # If both swept, we have our answer
-        if high_swept and low_swept:
-            opposite_swept = True
-            opposite_sweep_time = candle_time
-            break
-    
-    # If no first sweep occurred, skip this event
-    if first_sweep is None:
+    highs = subsequent['High'].to_numpy()
+    lows = subsequent['Low'].to_numpy()
+    times = subsequent['DateTime_UTC'].to_numpy()
+
+    high_hits = highs > data_high
+    low_hits = lows < data_low
+    high_swept = bool(high_hits.any())
+    low_swept = bool(low_hits.any())
+    high_pos = int(np.argmax(high_hits)) if high_swept else None
+    low_pos = int(np.argmax(low_hits)) if low_swept else None
+
+    if not high_swept and not low_swept:
         return None
-    
+
+    if high_swept and (not low_swept or high_pos <= low_pos):
+        first_sweep = 'high'
+        first_sweep_pos = high_pos
+    else:
+        first_sweep = 'low'
+        first_sweep_pos = low_pos
+
+    first_sweep_time = pd.Timestamp(times[first_sweep_pos])
+    opposite_swept = high_swept and low_swept
+    opposite_sweep_time = pd.Timestamp(times[max(high_pos, low_pos)]) if opposite_swept else None
+
     # Calculate time metrics
     time_to_first_sweep = (first_sweep_time - event_time).total_seconds() / 60  # minutes
-    
+
     time_to_opposite_sweep = None
     if opposite_swept and opposite_sweep_time is not None:
         time_to_opposite_sweep = (opposite_sweep_time - first_sweep_time).total_seconds() / 60
-    
+
     # Determine synthetic box level
     if first_sweep == 'high':
         synthetic_box_level = data_high + range_size
@@ -208,57 +247,45 @@ def analyze_event(nq: pd.DataFrame, event_time: pd.Timestamp, event_type: str) -
     else:  # first_sweep == 'low'
         synthetic_box_level = data_low - range_size
         opposite_level = data_high
-    
+
     # Scan post-sweep candles to determine which target is hit FIRST
-    post_sweep = subsequent.loc[first_sweep_idx:]
+    post_highs = highs[first_sweep_pos:]
+    post_lows = lows[first_sweep_pos:]
+    post_times = times[first_sweep_pos:]
     first_target_hit = None  # 'box', 'opposite', or None
     box_hit_time = None
     opposite_hit_time = None
     mae_before_reversal = 0.0
     synthetic_box_breached = False
-    
-    for idx, candle in post_sweep.iterrows():
-        candle_high = candle['High']
-        candle_low = candle['Low']
-        candle_time = candle['DateTime_UTC']
-        
-        if first_sweep == 'high':
-            # Momentum target = synthetic box (above)
-            # Reversal target = opposite (data_low)
-            if candle_high > synthetic_box_level and box_hit_time is None:
-                box_hit_time = candle_time
-                synthetic_box_breached = True
-                if first_target_hit is None:
-                    first_target_hit = 'box'
-            if candle_low < opposite_level and opposite_hit_time is None:
-                opposite_hit_time = candle_time
-                if first_target_hit is None:
-                    first_target_hit = 'opposite'
-            # Track MAE (max extension in momentum direction before hitting opposite)
-            if opposite_hit_time is None:
-                extension = (candle_high - data_high) / range_size if range_size > 0 else 0
-                mae_before_reversal = max(mae_before_reversal, extension)
-        else:  # first_sweep == 'low'
-            # Momentum target = synthetic box (below)
-            # Reversal target = opposite (data_high)
-            if candle_low < synthetic_box_level and box_hit_time is None:
-                box_hit_time = candle_time
-                synthetic_box_breached = True
-                if first_target_hit is None:
-                    first_target_hit = 'box'
-            if candle_high > opposite_level and opposite_hit_time is None:
-                opposite_hit_time = candle_time
-                if first_target_hit is None:
-                    first_target_hit = 'opposite'
-            # Track MAE (max extension in momentum direction before hitting opposite)
-            if opposite_hit_time is None:
-                extension = (data_low - candle_low) / range_size if range_size > 0 else 0
-                mae_before_reversal = max(mae_before_reversal, extension)
-        
-        # If both targets hit, we can stop scanning
-        if box_hit_time is not None and opposite_hit_time is not None:
-            break
-    
+
+    if first_sweep == 'high':
+        box_hits = post_highs > synthetic_box_level
+        opposite_hits = post_lows < opposite_level
+    else:
+        box_hits = post_lows < synthetic_box_level
+        opposite_hits = post_highs > opposite_level
+
+    box_hit_pos = int(np.argmax(box_hits)) if box_hits.any() else None
+    opposite_hit_pos = int(np.argmax(opposite_hits)) if opposite_hits.any() else None
+
+    if box_hit_pos is not None:
+        box_hit_time = pd.Timestamp(post_times[box_hit_pos])
+        synthetic_box_breached = True
+    if opposite_hit_pos is not None:
+        opposite_hit_time = pd.Timestamp(post_times[opposite_hit_pos])
+
+    if box_hit_pos is not None and (opposite_hit_pos is None or box_hit_pos <= opposite_hit_pos):
+        first_target_hit = 'box'
+    elif opposite_hit_pos is not None:
+        first_target_hit = 'opposite'
+
+    if range_size > 0:
+        mae_limit = opposite_hit_pos if opposite_hit_pos is not None else len(post_highs)
+        if mae_limit > 0 and first_sweep == 'high':
+            mae_before_reversal = max(0.0, float(np.max((post_highs[:mae_limit] - data_high) / range_size)))
+        elif mae_limit > 0:
+            mae_before_reversal = max(0.0, float(np.max((data_low - post_lows[:mae_limit]) / range_size)))
+
     # Extract release time of day
     release_time_str = release_candle['DateTime_ET'].strftime('%H:%M')
     
