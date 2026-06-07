@@ -42,7 +42,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Wave 3: Port `exploration.py` to polars (MIGRATE-02) — win-rate/timing/quartile/MAE aggregations + charts + summary CSV
+- [x] 01-03-PLAN.md — Wave 3: Port `exploration.py` to polars (MIGRATE-02) — win-rate/timing/quartile/MAE aggregations + charts + summary CSV
 - [ ] 01-04-PLAN.md — Wave 3: Port `causal_analysis.py` to polars (MIGRATE-03) — explicit `polars → numpy` model boundary + event_stats CSV + charts
 
 ### Phase 2: Independent Pipelines on Polars
@@ -91,7 +91,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Primary Pipeline on Polars | 2/4 | In Progress|  |
+| 1. Primary Pipeline on Polars | 3/4 | In Progress|  |
 | 2. Independent Pipelines on Polars | 0/TBD | Not started | - |
 | 3. Test Suite on Polars | 0/TBD | Not started | - |
 | 4. Pandas Removal & Manifest Finalization | 0/TBD | Not started | - |

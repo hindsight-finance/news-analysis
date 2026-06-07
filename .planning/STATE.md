@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Polars Migration
 status: executing
-last_updated: "2026-06-07T02:25:49.849Z"
+last_updated: "2026-06-07T02:37:08.077Z"
 last_activity: 2026-06-07
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-06-07)
 ## Current Position
 
 Phase: 01 (primary-pipeline-on-polars) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-06-07
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [█████░░░░░] 50%
 *Updated after each plan completion*
 | Phase 01 P01 | 9min | 1 tasks | 1 files |
 | Phase 01 P02 | 13min | 2 tasks | 1 files |
+| Phase 01 P03 | 4min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,7 @@ Recent decisions affecting current work:
 - [Phase ?]: main.py ported to polars: preserve numpy methodology kernel verbatim, port only the I/O boundary (load/lookup/extract/write)
 - [Phase ?]: Pinned output via module-level CONTRACT_SCHEMA (21 cols, ns/UTC event_datetime, Int64 release_volume, Float64 pre_candle_volume) to stop dict-inference dtype drift
 - [Phase ?]: Replaced nq.attrs lookup cache with an explicitly-threaded lookups dict of ns-int64 arrays (polars has no per-frame metadata)
+- [Phase ?]: exploration.py polars port: win-rate/summary via group_by/agg + pl.when/then; qcut(allow_duplicates=True) Categorical bins (display-only); matplotlib fed via .to_numpy()/.to_list() at the boundary; printed-table order is cosmetic (hash group order), win-rate values are explicit-agg not order-dependent
 
 ### Pending Todos
 
@@ -99,6 +101,6 @@ Items acknowledged and carried forward / out of this milestone's scope:
 
 ## Session Continuity
 
-Last session: 2026-06-07T02:25:49.819Z
+Last session: 2026-06-07T02:32:22.919Z
 Stopped at: Completed 01-02-PLAN.md (main.py ported to polars; 21-col contract regenerated, 4792 rows)
 Resume file: None
