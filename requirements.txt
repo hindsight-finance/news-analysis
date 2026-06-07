@@ -1,0 +1,7 @@
+# News Analysis — pinned runtime + test environment (Python 3.12)
+# polars replaces pandas; parquet is read/written natively (no pyarrow).
+polars==1.40.1
+numpy==1.26.4
+matplotlib==3.6.3
+scikit-learn==1.8.0
+pytest==9.0.2

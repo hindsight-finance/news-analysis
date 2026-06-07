@@ -1,4 +1,7 @@
-import pandas as pd
+import math
+from datetime import datetime, timezone
+
+import polars as pl
 
 from forward_returns import build_forward_returns, candle_direction, direction_normalized_return
 
@@ -12,70 +15,80 @@ def test_candle_direction_labels_up_down_flat():
 def test_direction_normalized_return_flips_down_candles_and_excludes_flat():
     assert direction_normalized_return(1.5, "up") == 1.5
     assert direction_normalized_return(1.5, "down") == -1.5
-    assert pd.isna(direction_normalized_return(1.5, "flat"))
+    assert math.isnan(direction_normalized_return(1.5, "flat"))
 
 
 def test_build_forward_returns_computes_raw_and_normalized_returns():
-    events = pd.DataFrame({"datetime_utc": [pd.Timestamp("2024-01-02 13:30:00", tz="UTC")], "title": ["US Test"]})
-    nq = pd.DataFrame(
+    events = pl.DataFrame(
+        {"datetime_utc": [datetime(2024, 1, 2, 13, 30)], "title": ["US Test"]}
+    ).with_columns(pl.col("datetime_utc").dt.replace_time_zone("UTC"))
+    nq = pl.DataFrame(
         {
-            "datetime_utc": pd.to_datetime(
-                ["2024-01-02 13:30:00", "2024-01-02 14:00:00", "2024-01-02 15:00:00"], utc=True
-            ),
+            "datetime_utc": [
+                datetime(2024, 1, 2, 13, 30),
+                datetime(2024, 1, 2, 14, 0),
+                datetime(2024, 1, 2, 15, 0),
+            ],
             "Open": [100.0, 101.0, 102.0],
             "High": [102.0, 103.0, 104.0],
             "Low": [99.0, 100.0, 101.0],
             "Close": [101.0, 103.02, 98.98],
             "Volume": [10, 11, 12],
         }
-    )
+    ).with_columns(pl.col("datetime_utc").dt.replace_time_zone("UTC"))
 
     result = build_forward_returns(events, nq, horizons=(30, 90))
 
-    assert result["horizon_minutes"].tolist() == [30, 90]
-    assert result["news_candle_direction"].tolist() == ["up", "up"]
-    assert result["raw_forward_return_pct"].round(2).tolist() == [2.0, -2.0]
-    assert result["direction_normalized_return_pct"].round(2).tolist() == [2.0, -2.0]
-    assert result["raw_mfe_pct"].round(2).tolist() == [1.98, 2.97]
-    assert result["raw_mae_pct"].round(2).tolist() == [-0.99, -0.99]
-    assert result["direction_normalized_mfe_pct"].round(2).tolist() == [1.98, 2.97]
-    assert result["direction_normalized_mae_pct"].round(2).tolist() == [-0.99, -0.99]
+    assert result["horizon_minutes"].to_list() == [30, 90]
+    assert result["news_candle_direction"].to_list() == ["up", "up"]
+    assert result["raw_forward_return_pct"].round(2).to_list() == [2.0, -2.0]
+    assert result["direction_normalized_return_pct"].round(2).to_list() == [2.0, -2.0]
+    assert result["raw_mfe_pct"].round(2).to_list() == [1.98, 2.97]
+    assert result["raw_mae_pct"].round(2).to_list() == [-0.99, -0.99]
+    assert result["direction_normalized_mfe_pct"].round(2).to_list() == [1.98, 2.97]
+    assert result["direction_normalized_mae_pct"].round(2).to_list() == [-0.99, -0.99]
 
 
 def test_build_forward_returns_skips_missing_future_candle():
-    events = pd.DataFrame({"datetime_utc": [pd.Timestamp("2024-01-02 13:30:00", tz="UTC")], "title": ["US Test"]})
-    nq = pd.DataFrame(
+    events = pl.DataFrame(
+        {"datetime_utc": [datetime(2024, 1, 2, 13, 30)], "title": ["US Test"]}
+    ).with_columns(pl.col("datetime_utc").dt.replace_time_zone("UTC"))
+    nq = pl.DataFrame(
         {
-            "datetime_utc": pd.to_datetime(["2024-01-02 13:30:00", "2024-01-02 14:00:00"], utc=True),
+            "datetime_utc": [datetime(2024, 1, 2, 13, 30), datetime(2024, 1, 2, 14, 0)],
             "Open": [101.0, 100.0],
             "High": [102.0, 101.0],
             "Low": [99.0, 99.0],
             "Close": [100.0, 99.0],
             "Volume": [10, 11],
         }
-    )
+    ).with_columns(pl.col("datetime_utc").dt.replace_time_zone("UTC"))
 
     result = build_forward_returns(events, nq, horizons=(30, 90))
 
-    assert result["horizon_minutes"].tolist() == [30]
-    assert result["news_candle_direction"].tolist() == ["down"]
-    assert result["raw_forward_return_pct"].round(2).tolist() == [-1.0]
-    assert result["direction_normalized_return_pct"].round(2).tolist() == [1.0]
-    assert result["raw_mfe_pct"].round(2).tolist() == [1.0]
-    assert result["raw_mae_pct"].round(2).tolist() == [-1.0]
-    assert result["direction_normalized_mfe_pct"].round(2).tolist() == [1.0]
-    assert result["direction_normalized_mae_pct"].round(2).tolist() == [-1.0]
+    assert result["horizon_minutes"].to_list() == [30]
+    assert result["news_candle_direction"].to_list() == ["down"]
+    assert result["raw_forward_return_pct"].round(2).to_list() == [-1.0]
+    assert result["direction_normalized_return_pct"].round(2).to_list() == [1.0]
+    assert result["raw_mfe_pct"].round(2).to_list() == [1.0]
+    assert result["raw_mae_pct"].round(2).to_list() == [-1.0]
+    assert result["direction_normalized_mfe_pct"].round(2).to_list() == [1.0]
+    assert result["direction_normalized_mae_pct"].round(2).to_list() == [-1.0]
+
 
 from forward_returns import write_outputs
 
 
 def test_write_outputs_creates_csv_and_expected_charts(tmp_path):
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "event_type": ["US Test", "US Test", "US Test", "US Test"],
-            "event_datetime": pd.to_datetime(
-                ["2024-01-02 13:30:00", "2024-01-03 13:30:00", "2024-01-02 13:30:00", "2024-01-03 13:30:00"], utc=True
-            ),
+            "event_datetime": [
+                datetime(2024, 1, 2, 13, 30),
+                datetime(2024, 1, 3, 13, 30),
+                datetime(2024, 1, 2, 13, 30),
+                datetime(2024, 1, 3, 13, 30),
+            ],
             "horizon_minutes": [30, 30, 90, 90],
             "news_candle_direction": ["up", "down", "up", "down"],
             "raw_forward_return_pct": [1.0, -0.5, 2.0, -1.0],
@@ -90,7 +103,7 @@ def test_write_outputs_creates_csv_and_expected_charts(tmp_path):
             "direction_normalized_mfe_pct": [1.98, 1.01, 2.97, 2.02],
             "direction_normalized_mae_pct": [-0.99, -2.02, -1.98, -3.03],
         }
-    )
+    ).with_columns(pl.col("event_datetime").dt.replace_time_zone("UTC"))
 
     write_outputs(df, tmp_path)
 

@@ -1,12 +1,11 @@
-from pathlib import Path
-import pandas as pd
+import polars as pl
 
-from exploration import build_summary_table, compute_win_rates
+from exploration import build_summary_table, compute_win_rates, qcut_with_fallback_labels
 from causal_analysis import build_features
 
 
-def sample_results() -> pd.DataFrame:
-    return pd.DataFrame(
+def sample_results() -> pl.DataFrame:
+    return pl.DataFrame(
         {
             "event_type": ["A", "A", "B", "B"],
             "release_time": ["08:30", "08:30", "10:00", "10:00"],
@@ -28,7 +27,7 @@ def sample_results() -> pd.DataFrame:
 
 def test_compute_win_rates_counts_resolved_outcomes_only():
     rates = compute_win_rates(sample_results(), ["event_type"])
-    row_b = rates[rates["event_type"] == "B"].iloc[0]
+    row_b = rates.filter(pl.col("event_type") == "B").row(0, named=True)
     assert row_b["total"] == 2
     assert row_b["resolved"] == 1
     assert row_b["momentum_rate"] == 100.0
@@ -37,7 +36,7 @@ def test_compute_win_rates_counts_resolved_outcomes_only():
 
 def test_build_summary_table_orders_by_edge():
     summary = build_summary_table(sample_results())
-    assert list(summary.columns) == [
+    assert summary.columns == [
         "event_type",
         "n",
         "momentum_rate",
@@ -47,25 +46,23 @@ def test_build_summary_table_orders_by_edge():
         "avg_time_to_sweep",
         "avg_range_pct",
     ]
-    assert summary.iloc[0]["event_type"] == "B"
-    assert summary.iloc[0]["edge"] == 50.0
+    assert summary.row(0, named=True)["event_type"] == "B"
+    assert summary.row(0, named=True)["edge"] == 50.0
 
 
 def test_build_features_encodes_missing_context_as_zero_or_minus_one():
-    df = sample_results()
-    resolved = df[df["first_target_hit"].notna()].copy()
-    resolved["target"] = (resolved["first_target_hit"] == "box").astype(int)
+    resolved = sample_results().filter(pl.col("first_target_hit").is_not_null()).with_columns(
+        (pl.col("first_target_hit") == "box").cast(pl.Int64).alias("target")
+    )
     features, target = build_features(resolved)
-    assert len(features) == 3
-    assert target.tolist() == [1, 0, 1]
-    assert features.loc[1, "pre_candle_range_pct"] == 0
-    assert features.loc[1, "gap_6pm_pct"] == 0
-    assert features.loc[2, "gap_direction_encoded"] == -1
-
-from exploration import qcut_with_fallback_labels
+    assert features.height == 3
+    assert target.to_list() == [1, 0, 1]
+    assert features.row(1, named=True)["pre_candle_range_pct"] == 0
+    assert features.row(1, named=True)["gap_6pm_pct"] == 0
+    assert features.row(2, named=True)["gap_direction_encoded"] == -1
 
 
 def test_qcut_with_fallback_labels_handles_duplicate_bin_edges():
-    result = qcut_with_fallback_labels(pd.Series([1, 1, 1, 2, 3]), 4, ["Q1", "Q2", "Q3", "Q4"])
+    result = qcut_with_fallback_labels(pl.Series([1, 1, 1, 2, 3]), 4, ["Q1", "Q2", "Q3", "Q4"])
     assert len(result) == 5
-    assert result.isna().sum() == 0
+    assert result.null_count() == 0

@@ -57,7 +57,7 @@ Latest full run summary:
 
 ## Usage
 
-Use Python 3.12+ with pandas, numpy, matplotlib, scikit-learn, pyarrow, polars, and pytest installed.
+Use Python 3.12+ with polars, numpy, matplotlib, scikit-learn, and pytest installed. Install the pinned set with `pip install -r requirements.txt`. (pandas and pyarrow are no longer dependencies — polars reads/writes Parquet natively.)
 
 Run the full analysis:
 

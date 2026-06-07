@@ -14,16 +14,16 @@ Requirements for the **Polars Migration** milestone. Replace pandas with polars 
 - [x] **MIGRATE-03**: `causal_analysis.py` runs on polars for data handling, with an explicit `polars → numpy` conversion at the scikit-learn boundary so models receive numpy arrays
 - [x] **MIGRATE-04**: `forward_returns.py` runs on polars, including a polars replacement for the `np.searchsorted` timestamp-lookup optimization
 - [x] **MIGRATE-05**: `injection.py` runs on polars — range calculation and histogram inputs use polars
-- [ ] **MIGRATE-06**: No `import pandas` remains anywhere in the scripts or tests (pandas fully removed from source)
+- [x] **MIGRATE-06**: No `import pandas` remains anywhere in the scripts or tests (pandas fully removed from source) — repo-wide grep returns zero matches
 
 ### Environment
 
-- [ ] **ENV-01**: A version-pinned dependency manifest rebuilds the full polars-based runtime + test environment from a single install command, with pandas absent from the manifest
+- [x] **ENV-01**: A version-pinned dependency manifest rebuilds the full polars-based runtime + test environment from a single install command, with pandas absent from the manifest — `requirements.txt` (polars/numpy/matplotlib/scikit-learn/pytest, no pandas/pyarrow)
 - [x] **ENV-02**: polars reads the raw Parquet inputs (`nq_1m.parquet`, `economic_events.parquet`) directly; the parquet backend dependency is resolved and pinned
 
 ### Testing
 
-- [ ] **TEST-01**: The existing pytest suite is ported to polars (fixtures and assertions use polars) and passes
+- [x] **TEST-01**: The existing pytest suite is ported to polars (fixtures and assertions use polars) and passes — 13/13 green, zero `import pandas` in tests
 
 ## Future Requirements
 
@@ -78,10 +78,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 | MIGRATE-03 | Phase 1 | Complete |
 | MIGRATE-04 | Phase 2 | Complete |
 | MIGRATE-05 | Phase 2 | Complete |
-| MIGRATE-06 | Phase 4 | Pending |
-| ENV-01 | Phase 4 | Pending |
+| MIGRATE-06 | Phase 4 | Complete |
+| ENV-01 | Phase 4 | Complete |
 | ENV-02 | Phase 1 | Complete |
-| TEST-01 | Phase 3 | Pending |
+| TEST-01 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 9 total

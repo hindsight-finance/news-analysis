@@ -42,8 +42,8 @@ For this milestone specifically: every script and test runs on polars instead of
 
 - [x] Scripts ported from pandas to polars, sweep methodology logic intact — **5/5 done** (Phase 1: `main.py`, `exploration.py`, `causal_analysis.py`; **Phase 2: `forward_returns.py` + `injection.py`**). All script-level pandas usage is now gone; the test suite is the last pandas holdout (Phase 3).
 - [x] scikit-learn boundary in `causal_analysis.py` handled via explicit `polars → numpy` conversion — **Validated in Phase 1: Primary Pipeline on Polars**
-- [ ] Existing pytest suite ported to polars and passing (Phase 3)
-- [ ] Dependency manifest rewritten: polars replaces pandas (pandas removed); reproducible runtime + test environment pinned; parquet backend resolved — Phase 1 confirmed native polars parquet reads (`use_pyarrow=False`); manifest pinning + pandas removal remain (Phase 4)
+- [x] Existing pytest suite ported to polars and passing (Phase 3) — 13/13 green, all fixtures/assertions polars, zero `import pandas` in tests
+- [x] Dependency manifest rewritten: polars replaces pandas (pandas removed); reproducible runtime + test environment pinned; parquet backend resolved (Phase 4) — `requirements.txt` pins polars/numpy/matplotlib/scikit-learn/pytest; pandas **and** pyarrow dropped (native polars parquet I/O); repo-wide `import pandas` grep is zero
 
 ### Future
 
@@ -114,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-07 — Phase 2 (Independent Pipelines on Polars) complete: `forward_returns.py` + `injection.py` now run on polars with a pure-polars exact-match timestamp lookup replacing `np.searchsorted`/linear scans (D-04..D-09 methodology guards verified, 15/15 must-haves). All 5 scripts are now pandas-free; only the pytest suite (Phase 3) remains on pandas.*
+*Last updated: 2026-06-07 — Milestone v1.0 (Polars Migration) COMPLETE. Phases 3 & 4 finished directly (no per-phase GSD plans, by user request to drop ceremony): the pytest suite is fully ported to polars (13/13 green), pandas is removed repo-wide (zero `import pandas`), and a pinned `requirements.txt` (polars/numpy/matplotlib/scikit-learn/pytest — no pandas, no pyarrow) rebuilds the runtime. All five scripts + the test suite now run on polars; the sweep methodology is intact.*
