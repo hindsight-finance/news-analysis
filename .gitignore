@@ -2,3 +2,8 @@ data/
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Chart-output policy: charts belong under charts/ (where the scripts write them).
+# Stray root-level PNGs are leftover CWD outputs from older script versions —
+# ignore them so they don't get re-committed at the repo root.
+/*.png
