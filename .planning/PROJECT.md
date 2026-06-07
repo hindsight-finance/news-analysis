@@ -10,7 +10,19 @@ As of **v1.0 (Polars Migration, shipped 2026-06-07)**, the codebase runs on **po
 
 The post-news-release sweep methodology is the asset. Everything in this project exists to keep that research correct and easy to extend. When tradeoffs arise, protect the integrity of the methodology and the raw data over code elegance or speed.
 
-For this milestone specifically: every script and test runs on polars instead of pandas, with the sweep methodology *logic* ported faithfully. Exact historical output reproduction is explicitly **not** a goal — the idea matters, not matching the old pandas numbers.
+For v1.1 specifically: lock the sweep methodology in with *direct tests* on its core (`analyze_event`), fix the two real validity bugs, and clear hygiene debt — without disturbing the methodology logic itself.
+
+## Current Milestone: v1.1 Core Validation & Hardening
+
+**Goal:** Put the sweep-methodology core under direct test, fix the two real validity bugs, and clear hygiene debt — fast, with each item executed as a direct GSD fix.
+
+**Target features:**
+- Direct test coverage for the untested core asset: `analyze_event` (high/low sweep + reversal-vs-momentum resolution), session-context/gap features in `main.py`, and `injection.py`'s lookup + range functions
+- Validity triage + fix: hardcoded 16:59 ET prior-close (`main.py:208`); silent event-dropping (surface a dropped-event count instead of a silent skip); confirm `loc`/`iloc` mix is already resolved by the migration and close it
+- Hygiene: remove the 4 stale root PNGs (+ chart-tracking policy), scope the global `filterwarnings("ignore")` in `causal_analysis.py`, README accuracy pass for the polars era
+- Allowance: fix emergent issues found while doing the above
+
+**Execution model:** Single fast phase; each task runs as a direct GSD fix (atomic commit) — no per-phase discuss/plan/execute ceremony — while keeping the milestone artifacts intact.
 
 ## Current State
 
@@ -21,7 +33,7 @@ For this milestone specifically: every script and test runs on polars instead of
 - Pinned, pandas-free `requirements.txt` (polars==1.40.1 / numpy / matplotlib / scikit-learn / pytest) — pyarrow also dropped via native polars parquet I/O.
 - ~1,965 LOC Python across 5 scripts + 3 test modules.
 
-**Next milestone:** not yet defined — run `/gsd-new-milestone`. Strongest candidates are the deferred **Future** items below (shared-utils extraction, CWD-independent paths, clean package structure, direct core-logic tests).
+**In progress:** v1.1 Core Validation & Hardening — direct tests for the sweep kernel + `injection.py`, the two real validity fixes, and hygiene. See **Current Milestone** above and `REQUIREMENTS.md`.
 
 ## Requirements
 
@@ -45,21 +57,26 @@ For this milestone specifically: every script and test runs on polars instead of
 
 ### Active
 
-<!-- No milestone in progress. Run /gsd-new-milestone to define the next one. -->
+<!-- v1.1 Core Validation & Hardening. Full list + REQ-IDs in REQUIREMENTS.md. -->
 
-_(None — v1.0 shipped. The next milestone is not yet scoped; see **Future** for the leading candidates.)_
+- [ ] Direct tests for `analyze_event` sweep detection — high/low sweep + reversal-vs-momentum (`TEST-01`)
+- [ ] Direct tests for `main.py` session-context / gap features (`TEST-02`)
+- [ ] Direct tests for `injection.py` lookup + range functions (`TEST-03`)
+- [ ] Fix hardcoded 16:59 ET prior-close (`VALID-01`)
+- [ ] Fix silent event-dropping — surface a dropped-event count (`VALID-02`)
+- [ ] Confirm `loc`/`iloc` mix resolved by the migration; close out (`VALID-03`)
+- [ ] Remove stale root PNGs + set chart-tracking policy (`HYG-01`)
+- [ ] Scope the global `filterwarnings("ignore")` in `causal_analysis.py` (`QUAL-01`)
+- [ ] README accuracy pass for the polars era (`HYG-02`)
 
 ### Future
 
-<!-- Deferred from the original Clean Foundation milestone — revisit after the migration. -->
+<!-- Deferred — revisit after v1.1. -->
 
 - Shared utilities extracted into one module (eliminate `ensure_utc` / `find_sorted_pos` / `qcut_with_fallback_labels` duplication)
 - CWD-independent data and output paths across all scripts; CWD-independent test suite
 - Clean package / project structure with a consistent entry-point pattern
-- Direct test coverage for the currently-untested core logic (`analyze_event`, `injection.py`)
-- Scoped warning handling replacing the global `warnings.filterwarnings("ignore")`
-- Repo hygiene — stale root-level PNGs, chart-output tracking policy, lingering notebooks, README rewrite
-- Triage of the three known validity bugs (hardcoded 16:59 ET prior-close, silent event-dropping, `loc`/`iloc` mix in `get_candles_until_eod`)
+- New research: validation / backtest harness, statistical significance testing, new hypotheses (currently Out of Scope)
 
 ### Out of Scope
 
@@ -99,6 +116,9 @@ _(None — v1.0 shipped. The next milestone is not yet scoped; see **Future** fo
 | Phases 3 & 4 executed directly (no per-phase GSD plans) | Drop ceremony for mechanical test-port + pandas-removal work | ✓ Good — both verified complete |
 | `main.py` keeps its numpy `searchsorted` lookup (D-03) | Lone numpy lookup holdout by decision; consumers use polars `build_timestamp_index` | ✓ Good |
 | No baseline / output parity for the migration | The research idea matters, not reproducing exact pandas numbers | — Locked |
+| Scope v1.1 to core-test coverage + validity fixes + hygiene (no new research) | Harden the foundation before extending the research; the sweep kernel was ported untested in v1.0 | — Pending |
+| Execute v1.1 as direct GSD fixes (no per-phase discuss/plan/execute) | Small, mechanical, well-understood tasks; matches the v1.0 precedent of running mechanical phases directly | — Pending |
+| `loc`/`iloc` validity bug treated as resolved by the polars migration | `get_candles_until_eod` was rewritten in polars; no `.loc`/`.iloc` remain repo-wide | ✓ Good |
 | ~~Refactor in place (cleanup-only Clean Foundation milestone)~~ | Superseded by the polars pivot | — Superseded 2026-06-07 |
 | ~~Scope first milestone to cleanup only~~ | Superseded by the polars pivot; cleanup items moved to Future | — Superseded 2026-06-07 |
 
@@ -120,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-07 after v1.0 milestone — Polars Migration SHIPPED and archived. All five scripts + the test suite run on polars; pandas removed repo-wide; pinned pandas-free `requirements.txt`; sweep methodology intact. Roadmap and requirements archived to `.planning/milestones/v1.0-*`; tagged `v1.0`. Next: `/gsd-new-milestone`.*
+*Last updated: 2026-06-07 after starting milestone v1.1 — Core Validation & Hardening. Scope: direct tests for the untested sweep kernel (`analyze_event`) + `injection.py`, fix the two real validity bugs (16:59 prior-close, silent event-drop), and hygiene (stale PNGs, scoped warnings, README). Executed as direct GSD fixes. See `REQUIREMENTS.md` and `ROADMAP.md`.*

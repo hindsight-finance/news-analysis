@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Polars Migration
-status: Awaiting next milestone
-last_updated: "2026-06-07T05:30:10.899Z"
-last_activity: 2026-06-07 — Milestone v1.0 completed and archived
+milestone: v1.1
+milestone_name: Core Validation & Hardening
+status: planning
+last_updated: "2026-06-07T05:52:49.509Z"
+last_activity: 2026-06-07
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-07)
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-07 — Milestone v1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-07 — Milestone v1.1 started
 
 ## Performance Metrics
 
