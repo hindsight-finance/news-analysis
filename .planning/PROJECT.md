@@ -40,7 +40,7 @@ For this milestone specifically: every script and test runs on polars instead of
 
 <!-- This milestone: Polars Migration. Port the DataFrame engine; drop pandas. -->
 
-- [~] Scripts ported from pandas to polars, sweep methodology logic intact — **3/5 done in Phase 1** (`main.py`, `exploration.py`, `causal_analysis.py`); `forward_returns.py` + `injection.py` remain (Phase 2)
+- [x] Scripts ported from pandas to polars, sweep methodology logic intact — **5/5 done** (Phase 1: `main.py`, `exploration.py`, `causal_analysis.py`; **Phase 2: `forward_returns.py` + `injection.py`**). All script-level pandas usage is now gone; the test suite is the last pandas holdout (Phase 3).
 - [x] scikit-learn boundary in `causal_analysis.py` handled via explicit `polars → numpy` conversion — **Validated in Phase 1: Primary Pipeline on Polars**
 - [ ] Existing pytest suite ported to polars and passing (Phase 3)
 - [ ] Dependency manifest rewritten: polars replaces pandas (pandas removed); reproducible runtime + test environment pinned; parquet backend resolved — Phase 1 confirmed native polars parquet reads (`use_pyarrow=False`); manifest pinning + pandas removal remain (Phase 4)
@@ -76,7 +76,7 @@ For this milestone specifically: every script and test runs on polars instead of
 - **Data:** NQ 1-minute OHLCV (2010–2026) and a US economic event calendar, both local Parquet, gitignored. No data-fetching code — the raw files are irreplaceable from this codebase alone. Polars reads Parquet natively.
 - **Stack today:** Python 3.12 with pandas, numpy, matplotlib, scikit-learn, pyarrow; polars 1.40.1 is already installed but unused. Migration target: polars in, pandas out.
 - **Latest findings (4,792 events):** opposite side swept 80.6%; momentum-box-first 52.2% vs reversal-first 45.7% — the central near-coin-flip the research probes.
-- **Migration touch points:** all five scripts use pandas DataFrames pervasively; the test suite is pandas-based; `causal_analysis.py` feeds DataFrames into scikit-learn (needs numpy at that boundary); `np.searchsorted` timestamp-lookup optimizations in `main.py`/`forward_returns.py` will need polars equivalents.
+- **Migration touch points:** all five scripts use pandas DataFrames pervasively; the test suite is pandas-based; `causal_analysis.py` feeds DataFrames into scikit-learn (needs numpy at that boundary); the `np.searchsorted` timestamp-lookup optimization in `forward_returns.py` was replaced in Phase 2 with a pure-polars exact-match lookup (`build_timestamp_index`); `injection.py` was upgraded to the same construct. `main.py` intentionally keeps its numpy-`searchsorted` pattern (D-03 — the lone numpy lookup holdout, by decision).
 - **Reference:** Full codebase map at `.planning/codebase/` (mapped 2026-06-07).
 
 ## Constraints
@@ -114,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-07 — Phase 1 (Primary Pipeline on Polars) complete: `main.py` → `exploration.py` + `causal_analysis.py` now run on polars; 21-col `sweep_analysis_results.parquet` contract intact; methodology preserved.*
+*Last updated: 2026-06-07 — Phase 2 (Independent Pipelines on Polars) complete: `forward_returns.py` + `injection.py` now run on polars with a pure-polars exact-match timestamp lookup replacing `np.searchsorted`/linear scans (D-04..D-09 methodology guards verified, 15/15 must-haves). All 5 scripts are now pandas-free; only the pytest suite (Phase 3) remains on pandas.*
