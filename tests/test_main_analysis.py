@@ -164,3 +164,57 @@ def test_analyze_event_drops_is_optional():
         [{"utc": _utc(2024, 1, 2, 13, 30), "et": datetime(2024, 1, 2, 8, 30), "o": 100, "h": 101, "l": 99, "c": 100, "v": 1}]
     )
     assert main.analyze_event(nq, _lookups(nq), _utc(2024, 1, 2, 14, 0), "US Test") is None
+
+
+# --- analyze_event sweep detection (TEST-01) ---------------------------------------
+
+
+def test_analyze_event_high_sweep_then_momentum_box():
+    # Release [99, 101] (range 2). High swept first, then the synthetic box (103)
+    # is hit before the opposite low (99) is breached -> momentum ('box').
+    nq = _build_nq(
+        [
+            {"utc": _utc(2024, 1, 2, 13, 30), "et": datetime(2024, 1, 2, 8, 30), "o": 100, "h": 101, "l": 99, "c": 100, "v": 10},
+            {"utc": _utc(2024, 1, 2, 13, 31), "et": datetime(2024, 1, 2, 8, 31), "o": 100, "h": 101.5, "l": 100, "c": 101, "v": 5},
+            {"utc": _utc(2024, 1, 2, 13, 32), "et": datetime(2024, 1, 2, 8, 32), "o": 101, "h": 103.5, "l": 101, "c": 103, "v": 5},
+            {"utc": _utc(2024, 1, 2, 13, 33), "et": datetime(2024, 1, 2, 8, 33), "o": 103, "h": 103, "l": 98.5, "c": 99, "v": 5},
+        ]
+    )
+    result = main.analyze_event(nq, _lookups(nq), _utc(2024, 1, 2, 13, 30), "US NFP")
+
+    assert result is not None
+    assert result["event_type"] == "US NFP"
+    assert result["release_time"] == "08:30"
+    assert result["data_high"] == 101.0
+    assert result["data_low"] == 99.0
+    assert result["range"] == 2.0
+    assert round(result["range_pct"], 4) == 2.0
+    assert result["first_sweep"] == "high"
+    assert result["opposite_swept"] is True
+    assert result["synthetic_box_breached"] is True
+    assert result["first_target_hit"] == "box"
+    assert round(result["time_to_first_sweep"], 4) == 1.0
+    assert round(result["time_to_opposite_sweep"], 4) == 2.0
+    assert round(result["mae_before_reversal"], 4) == 1.25
+
+
+def test_analyze_event_low_sweep_then_reversal_opposite():
+    # Release [99, 101]. Low swept first, then the opposite high (101) is taken
+    # before the downside box (97) -> reversal ('opposite'), box never breached.
+    nq = _build_nq(
+        [
+            {"utc": _utc(2024, 1, 2, 13, 30), "et": datetime(2024, 1, 2, 8, 30), "o": 100, "h": 101, "l": 99, "c": 100, "v": 10},
+            {"utc": _utc(2024, 1, 2, 13, 31), "et": datetime(2024, 1, 2, 8, 31), "o": 100, "h": 101, "l": 98.5, "c": 99, "v": 5},
+            {"utc": _utc(2024, 1, 2, 13, 32), "et": datetime(2024, 1, 2, 8, 32), "o": 98, "h": 101.5, "l": 98, "c": 101, "v": 5},
+        ]
+    )
+    result = main.analyze_event(nq, _lookups(nq), _utc(2024, 1, 2, 13, 30), "US CPI")
+
+    assert result is not None
+    assert result["first_sweep"] == "low"
+    assert result["opposite_swept"] is True
+    assert result["synthetic_box_breached"] is False
+    assert result["first_target_hit"] == "opposite"
+    assert round(result["time_to_first_sweep"], 4) == 1.0
+    assert round(result["time_to_opposite_sweep"], 4) == 1.0
+    assert round(result["mae_before_reversal"], 4) == 0.25
