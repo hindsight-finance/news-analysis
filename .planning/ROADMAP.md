@@ -56,7 +56,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The `np.searchsorted` timestamp-lookup optimization in `forward_returns.py` is replaced with a polars equivalent, so candle lookups no longer depend on pandas
   3. Running `python3 injection.py` on polars produces its per-event release-candle and 10-minute range histograms, with range calculation and histogram inputs computed in polars
 
-**Plans**: TBD
+**Plans**: 2 plans (1 wave)
+
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Port `forward_returns.py` to polars (MIGRATE-04) — pure-polars exact-match lookup replacing `np.searchsorted`, ns/UTC precision guard, positional window, group_by/agg summaries + charts
+- [ ] 02-02-PLAN.md — Port `injection.py` to polars (MIGRATE-05) — pure-polars exact-match release lookup replacing the linear scan, time-bounded 10-min window, `Agg` guard, main() shape preserved
 
 ### Phase 3: Test Suite on Polars
 
@@ -92,6 +97,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Primary Pipeline on Polars | 4/4 | Complete    | 2026-06-07 |
-| 2. Independent Pipelines on Polars | 0/TBD | Not started | - |
+| 2. Independent Pipelines on Polars | 0/2 | Not started | - |
 | 3. Test Suite on Polars | 0/TBD | Not started | - |
 | 4. Pandas Removal & Manifest Finalization | 0/TBD | Not started | - |
