@@ -408,19 +408,19 @@ df.filter(pl.col("first_target_hit").is_not_null())  # was: df[df["first_target_
 
 **No `[ASSUMED]` package or version claims** — every library/version and API behavior in this document was verified by executing code against the installed environment and reading the real parquet schemas.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Existing pytest suite goes red during Phase 1.**
+1. **Existing pytest suite goes red during Phase 1.**  _RESOLVED: see 01-01-PLAN.md (smoke harness)._
    - What we know: `tests/test_main_data_loading.py` and `tests/test_analysis_scripts.py` import the Phase-1 scripts and assert **pandas** semantics (`.loc`, `.iloc`, `nq.attrs["utc_values"]`, `pd.Timestamp(...).value`, `Series.isna()`). After the port these assertions break. Porting the suite is **TEST-01 = Phase 3** (explicitly out of scope here).
    - What's unclear: whether the planner wants the suite left red (expected by roadmap sequencing) or wants a thin Phase-1 smoke check added.
    - Recommendation: Do **not** use the existing pytest suite as the Phase-1 success signal. Validate Phase 1 by **integration smoke runs** (see Validation Architecture). Accept the unit suite staying red until Phase 3; note it in the plan so a red `pytest` is not mistaken for a regression.
 
-2. **`load_data` signature change ripples to callers.**
+2. **`load_data` signature change ripples to callers.**  _RESOLVED: see 01-02-PLAN.md Task 1 (3-tuple + lookups dict)._
    - What we know: removing `nq.attrs` forces threading `lookups` through `analyze_event` and the three lookup helpers.
    - What's unclear: exact shape (extra positional arg vs `NamedTuple` vs returning a 3-tuple from `load_data`).
    - Recommendation: Return `(events, nq, lookups)` from `load_data` and pass `lookups` explicitly. Keep it inline per `main.py` (shared-utils extraction is deferred STRUCT-01).
 
-3. **`forward_returns.py` / `injection.py` still import pandas after Phase 1.**
+3. **`forward_returns.py` / `injection.py` still import pandas after Phase 1.**  _RESOLVED: no action required (Phase 2 scope)._
    - What we know: They are Phase 2; pandas stays installed.
    - Impact on Phase 1: none, as long as the three ported scripts contain **no `import pandas`** and write the contract polars-side.
 
