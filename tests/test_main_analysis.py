@@ -116,3 +116,51 @@ def test_get_session_context_resolves_prior_close_on_short_session():
     assert ctx["gap_6pm_direction"] == "up"
     # gap = (200 - 190) / 190 * 100
     assert round(ctx["gap_6pm_pct"], 4) == round((200.0 - 190.0) / 190.0 * 100, 4)
+
+
+# --- analyze_event drop accounting (VALID-02) --------------------------------------
+
+
+def test_analyze_event_counts_missing_release_candle():
+    nq = _build_nq(
+        [{"utc": _utc(2024, 1, 2, 13, 30), "et": datetime(2024, 1, 2, 8, 30), "o": 100, "h": 101, "l": 99, "c": 100, "v": 1}]
+    )
+    drops: Counter = Counter()
+    # 14:00 has no candle -> release lookup misses.
+    result = main.analyze_event(nq, _lookups(nq), _utc(2024, 1, 2, 14, 0), "US Test", drops=drops)
+    assert result is None
+    assert drops["no_release_candle"] == 1
+
+
+def test_analyze_event_counts_missing_subsequent_candles():
+    # Release candle is the only candle -> nothing until EOD.
+    nq = _build_nq(
+        [{"utc": _utc(2024, 1, 2, 13, 30), "et": datetime(2024, 1, 2, 8, 30), "o": 100, "h": 101, "l": 99, "c": 100, "v": 1}]
+    )
+    drops: Counter = Counter()
+    result = main.analyze_event(nq, _lookups(nq), _utc(2024, 1, 2, 13, 30), "US Test", drops=drops)
+    assert result is None
+    assert drops["no_subsequent_candles"] == 1
+
+
+def test_analyze_event_counts_no_sweep_by_eod():
+    # Subsequent candles never exceed the release high or breach its low.
+    nq = _build_nq(
+        [
+            {"utc": _utc(2024, 1, 2, 13, 30), "et": datetime(2024, 1, 2, 8, 30), "o": 100, "h": 101, "l": 99, "c": 100, "v": 1},
+            {"utc": _utc(2024, 1, 2, 13, 31), "et": datetime(2024, 1, 2, 8, 31), "o": 100, "h": 100.5, "l": 99.5, "c": 100, "v": 1},
+            {"utc": _utc(2024, 1, 2, 13, 32), "et": datetime(2024, 1, 2, 8, 32), "o": 100, "h": 100.8, "l": 99.2, "c": 100, "v": 1},
+        ]
+    )
+    drops: Counter = Counter()
+    result = main.analyze_event(nq, _lookups(nq), _utc(2024, 1, 2, 13, 30), "US Test", drops=drops)
+    assert result is None
+    assert drops["no_sweep_by_eod"] == 1
+
+
+def test_analyze_event_drops_is_optional():
+    # Backward compatible: with no drops counter it still just returns None.
+    nq = _build_nq(
+        [{"utc": _utc(2024, 1, 2, 13, 30), "et": datetime(2024, 1, 2, 8, 30), "o": 100, "h": 101, "l": 99, "c": 100, "v": 1}]
+    )
+    assert main.analyze_event(nq, _lookups(nq), _utc(2024, 1, 2, 14, 0), "US Test") is None

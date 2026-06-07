@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import polars as pl
 import numpy as np
+from collections import Counter
 from pathlib import Path
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -236,12 +237,27 @@ def get_session_context(nq: pl.DataFrame, lookups: dict, release_candle: dict) -
     return context
 
 
-def analyze_event(nq: pl.DataFrame, lookups: dict, event_time: datetime, event_type: str) -> dict | None:
-    """Analyze a single news event for sweep behavior."""
+def analyze_event(
+    nq: pl.DataFrame,
+    lookups: dict,
+    event_time: datetime,
+    event_type: str,
+    drops: Counter | None = None,
+) -> dict | None:
+    """Analyze a single news event for sweep behavior.
+
+    Returns the per-event result dict, or None when the event yields no row. When a
+    ``drops`` Counter is supplied, the reason for each None is tallied so callers can
+    report coverage instead of silently discarding events (VALID-02):
+    ``no_release_candle`` / ``no_subsequent_candles`` are data-coverage gaps, while
+    ``no_sweep_by_eod`` is a genuine "neither side swept" analytical outcome.
+    """
 
     # Get release candle
     release_candle = get_release_candle(nq, lookups, event_time)
     if release_candle is None:
+        if drops is not None:
+            drops["no_release_candle"] += 1
         return None
 
     data_high = release_candle['High']
@@ -252,6 +268,8 @@ def analyze_event(nq: pl.DataFrame, lookups: dict, event_time: datetime, event_t
     # Get subsequent candles until end of day
     subsequent = get_candles_until_eod(nq, lookups, event_time)
     if subsequent.is_empty():
+        if drops is not None:
+            drops["no_subsequent_candles"] += 1
         return None
 
     highs = subsequent.get_column('High').to_numpy()
@@ -267,6 +285,8 @@ def analyze_event(nq: pl.DataFrame, lookups: dict, event_time: datetime, event_t
     low_pos = int(np.argmax(low_hits)) if low_swept else None
 
     if not high_swept and not low_swept:
+        if drops is not None:
+            drops["no_sweep_by_eod"] += 1
         return None
 
     if high_swept and (not low_swept or high_pos <= low_pos):
@@ -372,12 +392,20 @@ def main():
     print(f"Analyzing {events.height} news events...")
 
     results = []
+    drops: Counter = Counter()
     for event in events.iter_rows(named=True):
-        result = analyze_event(nq, lookups, event['datetime_utc'], event['title'])
+        result = analyze_event(nq, lookups, event['datetime_utc'], event['title'], drops=drops)
         if result is not None:
             results.append(result)
 
-    print(f"Successfully analyzed {len(results)} events")
+    # Coverage accounting (VALID-02): report dropped events with reasons instead of
+    # silently discarding them, so a run is honest about how many events it covered.
+    dropped = events.height - len(results)
+    print(f"Successfully analyzed {len(results)} / {events.height} events")
+    if dropped:
+        print(f"Dropped {dropped} events:")
+        for reason, count in drops.most_common():
+            print(f"  - {reason}: {count}")
 
     # Build the DataFrame with the pinned contract schema (prevents dtype drift).
     df = pl.DataFrame(results, schema=CONTRACT_SCHEMA)
