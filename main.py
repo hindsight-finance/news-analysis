@@ -7,10 +7,12 @@ or low is swept, does price tend to reverse and sweep the opposite side?
 Lookback: Scans from release candle to end of trading day (4:00 PM ET).
 """
 
-import pandas as pd
+from __future__ import annotations
+
+import polars as pl
 import numpy as np
 from pathlib import Path
-from datetime import time
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 # Setup paths
@@ -21,22 +23,18 @@ OUTPUT_FILE = DATA_DIR / "sweep_analysis_results.parquet"
 TRADING_DAY_END = time(16, 0)
 
 
-def ensure_utc(series: pd.Series) -> pd.Series:
-    """Return a timezone-aware UTC datetime series."""
-    converted = pd.to_datetime(series)
-    if converted.dt.tz is None:
-        return converted.dt.tz_localize('UTC')
-    return converted.dt.tz_convert('UTC')
+def timestamp_ns_utc(dt: datetime) -> int:
+    """Convert a python datetime to integer UTC nanoseconds (no float rounding).
 
-
-def timestamp_ns_utc(timestamp: pd.Timestamp) -> int:
-    """Convert a timestamp to UTC nanoseconds."""
-    ts = pd.Timestamp(timestamp)
-    if ts.tzinfo is None:
-        ts = ts.tz_localize('UTC')
+    A naive datetime is treated as UTC. Inputs here are minute-aligned, so the
+    microsecond term is exact and the whole-second value is exactly
+    representable as a double.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     else:
-        ts = ts.tz_convert('UTC')
-    return ts.value
+        dt = dt.astimezone(timezone.utc)
+    return int(dt.timestamp()) * 1_000_000_000 + dt.microsecond * 1000
 
 
 def find_sorted_pos(values: np.ndarray, value: int) -> int | None:
@@ -47,90 +45,89 @@ def find_sorted_pos(values: np.ndarray, value: int) -> int | None:
     return None
 
 
-def add_lookup_tables(nq: pd.DataFrame) -> pd.DataFrame:
-    """Attach sorted timestamp arrays for fast event access."""
-    nq.attrs['utc_values'] = nq['DateTime_UTC'].dt.tz_convert('UTC').to_numpy(dtype='datetime64[ns]').astype('int64')
-    nq.attrs['et_values'] = pd.to_datetime(nq['DateTime_ET']).to_numpy(dtype='datetime64[ns]').astype('int64')
-    return nq
-
-
 def load_data():
-    """Load economic events and NQ 1m price data."""
-    events = pd.read_parquet(DATA_DIR / "economic_events.parquet")
-    nq = pd.read_parquet(DATA_DIR / "nq_1m.parquet")
+    """Load economic events and NQ 1m price data (polars; native parquet reader).
 
-    if 'DateTime_UTC' not in nq.columns and 'datetime_utc' in nq.columns:
-        nq = nq.rename(columns={'datetime_utc': 'DateTime_UTC'})
-    
-    # Ensure DateTime columns are properly formatted
-    nq['DateTime_UTC'] = ensure_utc(nq['DateTime_UTC'])
-    if 'DateTime_ET' not in nq.columns:
-        nq['DateTime_ET'] = nq['DateTime_UTC'].dt.tz_convert('America/New_York').dt.tz_localize(None)
+    Returns a 3-tuple ``(events, nq, lookups)`` where ``lookups`` holds the two
+    ns-int64 timestamp arrays, threaded explicitly because polars frames have no
+    per-frame metadata cache.
+    """
+    # ENV-02: native polars read path, no pandas/pyarrow.
+    events = pl.read_parquet(DATA_DIR / "economic_events.parquet", use_pyarrow=False)
+    nq = pl.read_parquet(DATA_DIR / "nq_1m.parquet", use_pyarrow=False)
+
+    if "DateTime_UTC" not in nq.columns and "datetime_utc" in nq.columns:
+        nq = nq.rename({"datetime_utc": "DateTime_UTC"})
+
+    # Normalize DateTime_UTC to tz-aware UTC (naive -> stamp UTC; aware -> convert).
+    if nq.schema["DateTime_UTC"].time_zone is None:
+        nq = nq.with_columns(pl.col("DateTime_UTC").dt.replace_time_zone("UTC"))
     else:
-        nq['DateTime_ET'] = pd.to_datetime(nq['DateTime_ET'])
-    events['datetime_utc'] = ensure_utc(events['datetime_utc'])
-    
-    # Sort NQ by time for efficient lookups
-    nq = nq.sort_values('DateTime_UTC').reset_index(drop=True)
-    nq = add_lookup_tables(nq)
-    
-    return events, nq
+        nq = nq.with_columns(pl.col("DateTime_UTC").dt.convert_time_zone("UTC"))
+
+    # Derive naive ET from UTC (session wall-clock used for lookups + context).
+    if "DateTime_ET" not in nq.columns:
+        nq = nq.with_columns(
+            pl.col("DateTime_UTC")
+            .dt.convert_time_zone("America/New_York")
+            .dt.replace_time_zone(None)
+            .alias("DateTime_ET")
+        )
+
+    # Normalize events datetime_utc to tz-aware UTC.
+    if events.schema["datetime_utc"].time_zone is None:
+        events = events.with_columns(pl.col("datetime_utc").dt.replace_time_zone("UTC"))
+    else:
+        events = events.with_columns(pl.col("datetime_utc").dt.convert_time_zone("UTC"))
+
+    # Sort NQ by time for efficient lookups.
+    nq = nq.sort("DateTime_UTC")
+
+    # Build ns-int64 lookup arrays (threaded via the lookups dict). The
+    # .astype("datetime64[ns]") FORCES microseconds->nanoseconds; without it every
+    # event lookup is 1000x off and silently dropped (RESEARCH Pitfall 1).
+    utc_values = nq.get_column("DateTime_UTC").to_numpy().astype("datetime64[ns]").astype("int64")
+    et_values = nq.get_column("DateTime_ET").to_numpy().astype("datetime64[ns]").astype("int64")
+    lookups = {"utc_values": utc_values, "et_values": et_values}
+
+    return events, nq, lookups
 
 
-def get_release_candle(nq: pd.DataFrame, event_time: pd.Timestamp) -> pd.Series | None:
-    """Get the release candle for an event."""
-    utc_values = nq.attrs.get('utc_values')
-    if utc_values is not None:
-        pos = find_sorted_pos(utc_values, timestamp_ns_utc(event_time))
-        return nq.iloc[pos] if pos is not None else None
-    mask = nq['DateTime_UTC'] == event_time
-    candle = nq[mask]
-    return candle.iloc[0] if not candle.empty else None
+def get_release_candle(nq: pl.DataFrame, lookups: dict, event_time: datetime) -> dict | None:
+    """Get the release candle for an event (dict row), or None if not found."""
+    pos = find_sorted_pos(lookups["utc_values"], timestamp_ns_utc(event_time))
+    return nq.row(pos, named=True) if pos is not None else None
 
 
-def get_candles_until_eod(nq: pd.DataFrame, start_time: pd.Timestamp) -> pd.DataFrame:
+def get_candles_until_eod(nq: pl.DataFrame, lookups: dict, start_time: datetime) -> pl.DataFrame:
     """Get all candles from start_time until end of trading day (4:00 PM ET)."""
-    # Get the start candle to find the trading day
-    utc_values = nq.attrs.get('utc_values')
-    start_idx = find_sorted_pos(utc_values, timestamp_ns_utc(start_time)) if utc_values is not None else None
+    utc_values = lookups["utc_values"]
+    start_idx = find_sorted_pos(utc_values, timestamp_ns_utc(start_time))
     if start_idx is None:
-        if utc_values is not None:
-            return pd.DataFrame()
-        start_mask = nq['DateTime_UTC'] == start_time
-        if not start_mask.any():
-            return pd.DataFrame()
-        start_idx = nq[start_mask].index[0]
-    if start_idx is None:
-        return pd.DataFrame()
+        return pl.DataFrame()
 
-    start_et = nq.loc[start_idx, 'DateTime_ET']
-    
-    # Get end of day timestamp (4:00 PM ET same day, or handle overnight)
+    start_et = nq.row(start_idx, named=True)["DateTime_ET"]  # naive python datetime (ET)
+
+    # End of trading day = 16:00 ET same day; if at/after 16:00, roll to next day's 16:00.
     end_of_day = start_et.replace(hour=16, minute=0, second=0, microsecond=0)
-    
-    # If event is after 4 PM, use next day's 4 PM
     if start_et.time() >= TRADING_DAY_END:
-        end_of_day = end_of_day + pd.Timedelta(days=1)
+        end_of_day = end_of_day + timedelta(days=1)
 
-    if 'utc_values' in nq.attrs:
-        end_utc = end_of_day.tz_localize(ZoneInfo('America/New_York')).tz_convert('UTC')
-        end_pos = np.searchsorted(nq.attrs['utc_values'], end_utc.value, side='right')
-        return nq.iloc[start_idx + 1:end_pos]
-    
-    # Filter candles: after start_time AND before end of day
-    mask = (nq['DateTime_UTC'] > start_time) & (nq['DateTime_ET'] <= end_of_day)
-    return nq[mask]
+    # Localize the ET wall-clock anchor -> UTC (DST-safe: 16:00 never falls in the 02:00 gap).
+    end_utc = end_of_day.replace(tzinfo=ZoneInfo("America/New_York")).astimezone(timezone.utc)
+    end_pos = int(np.searchsorted(utc_values, timestamp_ns_utc(end_utc), side="right"))
+
+    length = end_pos - (start_idx + 1)
+    if length <= 0:
+        return pl.DataFrame()
+    return nq.slice(start_idx + 1, length)
 
 
-def get_candle_at_time(nq: pd.DataFrame, target_et: pd.Timestamp) -> pd.Series | None:
-    """Get a specific candle by ET timestamp."""
-    et_values = nq.attrs.get('et_values')
-    if et_values is not None:
-        pos = find_sorted_pos(et_values, pd.Timestamp(target_et).value)
-        return nq.iloc[pos] if pos is not None else None
-    mask = nq['DateTime_ET'] == target_et
-    candle = nq[mask]
-    return candle.iloc[0] if not candle.empty else None
+def get_candle_at_time(nq: pl.DataFrame, lookups: dict, target_et: datetime) -> dict | None:
+    """Get a specific candle by naive-ET timestamp (dict row), or None if not found."""
+    target_ns = int(np.datetime64(target_et, "ns").astype("int64"))
+    pos = find_sorted_pos(lookups["et_values"], target_ns)
+    return nq.row(pos, named=True) if pos is not None else None
 
 
 def get_session_context(nq: pd.DataFrame, release_candle: pd.Series) -> dict:
