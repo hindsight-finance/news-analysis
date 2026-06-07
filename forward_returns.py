@@ -8,13 +8,14 @@ results by release-candle direction.
 from __future__ import annotations
 
 import argparse
+from datetime import timedelta
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import polars as pl
 
 DEFAULT_EVENTS = Path("data/economic_events.parquet")
 DEFAULT_NQ = Path("data/nq_1m.parquet")
@@ -22,35 +23,36 @@ DEFAULT_OUTPUT_DIR = Path("charts/forward_returns")
 DEFAULT_HORIZONS = (15, 30, 45, 60, 90)
 
 
-def ensure_utc(series: pd.Series) -> pd.Series:
-    converted = pd.to_datetime(series)
-    if converted.dt.tz is None:
-        return converted.dt.tz_localize("UTC")
-    return converted.dt.tz_convert("UTC")
+def normalize_nq(nq: pl.DataFrame) -> pl.DataFrame:
+    """Normalize the raw NQ frame to a sorted ns/UTC DateTime_UTC (mirrors main.py:load_data).
 
+    The on-disk column is ``datetime_utc`` (us precision); rename to ``DateTime_UTC``,
+    stamp/convert to UTC, then force ns precision so equality/join keys match the ns
+    events datetime (D-05). Skipping the cast silently drops every event.
+    """
+    if "DateTime_UTC" not in nq.columns and "datetime_utc" in nq.columns:
+        nq = nq.rename({"datetime_utc": "DateTime_UTC"})
 
-def normalize_nq_columns(nq: pd.DataFrame) -> pd.DataFrame:
-    normalized = nq.copy()
-    if "DateTime_UTC" not in normalized.columns and "datetime_utc" in normalized.columns:
-        normalized = normalized.rename(columns={"datetime_utc": "DateTime_UTC"})
-    normalized["DateTime_UTC"] = ensure_utc(normalized["DateTime_UTC"])
-    return normalized.sort_values("DateTime_UTC").reset_index(drop=True)
-
-
-def timestamp_ns_utc(timestamp: pd.Timestamp) -> int:
-    ts = pd.Timestamp(timestamp)
-    if ts.tzinfo is None:
-        ts = ts.tz_localize("UTC")
+    if nq.schema["DateTime_UTC"].time_zone is None:
+        nq = nq.with_columns(pl.col("DateTime_UTC").dt.replace_time_zone("UTC"))
     else:
-        ts = ts.tz_convert("UTC")
-    return ts.value
+        nq = nq.with_columns(pl.col("DateTime_UTC").dt.convert_time_zone("UTC"))
+
+    # D-05: us -> ns so the pure-polars equality lookup matches the ns event key.
+    nq = nq.with_columns(pl.col("DateTime_UTC").dt.cast_time_unit("ns"))
+    return nq.sort("DateTime_UTC")
 
 
-def find_sorted_pos(values: np.ndarray, value: int) -> int | None:
-    pos = int(np.searchsorted(values, value, side="left"))
-    if pos < len(values) and values[pos] == value:
-        return pos
-    return None
+def normalize_events(events: pl.DataFrame) -> pl.DataFrame:
+    """Normalize the raw events frame to a ns/UTC datetime_utc key (D-05)."""
+    if events.schema["datetime_utc"].time_zone is None:
+        events = events.with_columns(pl.col("datetime_utc").dt.replace_time_zone("UTC"))
+    else:
+        events = events.with_columns(pl.col("datetime_utc").dt.convert_time_zone("UTC"))
+
+    # D-05: keep the event key at ns/UTC to match the (ns-cast) nq column.
+    events = events.with_columns(pl.col("datetime_utc").dt.cast_time_unit("ns"))
+    return events
 
 
 def candle_direction(open_price: float, close_price: float) -> str:
@@ -89,40 +91,84 @@ def direction_normalized_profile(
     return (np.nan, np.nan)
 
 
+def build_timestamp_index(
+    events: pl.DataFrame,
+    nq: pl.DataFrame,
+    horizons: tuple[int, ...],
+) -> dict:
+    """Pure-polars exact-match lookup: timestamp -> nq row index (D-01/D-03/D-04).
+
+    Builds every wanted timestamp (each event datetime plus each horizon offset),
+    inner-joins them against ``nq[[DateTime_UTC, idx]]`` (exact-match; misses drop,
+    reproducing the old sorted-position lookup returning None -> ``continue``), and
+    collapses the matches into a ``{timestamp: idx}`` dict. No numpy searchsorted, no
+    as-of/nearest-match join, no per-event full-frame scan: the join resolves all
+    lookups in one pass.
+    """
+    nq_keys = nq.with_row_index("idx").select(["DateTime_UTC", "idx"])
+
+    wanted_parts = [
+        events.select(pl.col("datetime_utc").dt.cast_time_unit("ns").alias("DateTime_UTC"))
+    ]
+    for horizon in horizons:
+        wanted_parts.append(
+            events.select(
+                (pl.col("datetime_utc") + pl.duration(minutes=int(horizon)))
+                .dt.cast_time_unit("ns")
+                .alias("DateTime_UTC")
+            )
+        )
+
+    wanted = pl.concat(wanted_parts).unique()
+    matched = wanted.join(nq_keys, on="DateTime_UTC", how="inner")
+    return dict(
+        zip(
+            matched.get_column("DateTime_UTC").to_list(),
+            matched.get_column("idx").to_list(),
+        )
+    )
+
+
 def build_forward_returns(
-    events: pd.DataFrame,
-    nq: pd.DataFrame,
+    events: pl.DataFrame,
+    nq: pl.DataFrame,
     horizons: tuple[int, ...] = DEFAULT_HORIZONS,
-) -> pd.DataFrame:
-    events = events.copy()
-    events["datetime_utc"] = ensure_utc(events["datetime_utc"])
-    nq = normalize_nq_columns(nq)
-    utc_values = nq["DateTime_UTC"].dt.tz_convert("UTC").to_numpy(dtype="datetime64[ns]").astype("int64")
+) -> pl.DataFrame:
+    events = normalize_events(events)
+    nq = normalize_nq(nq)
+
+    ts_to_idx = build_timestamp_index(events, nq, horizons)
 
     rows: list[dict] = []
-    for _, event in events.iterrows():
+    for event in events.iter_rows(named=True):
         event_time = event["datetime_utc"]
-        release_pos = find_sorted_pos(utc_values, timestamp_ns_utc(event_time))
-        if release_pos is None:
+        release_idx = ts_to_idx.get(event_time)
+        if release_idx is None:
             continue
 
-        release = nq.iloc[release_pos]
+        release = nq.row(release_idx, named=True)
+        release_open = float(release["Open"])
+        release_high = float(release["High"])
+        release_low = float(release["Low"])
         release_close = float(release["Close"])
-        direction = candle_direction(float(release["Open"]), release_close)
+        direction = candle_direction(release_open, release_close)
 
         for horizon in horizons:
-            future_time = event_time + pd.Timedelta(minutes=int(horizon))
-            future_pos = find_sorted_pos(utc_values, timestamp_ns_utc(future_time))
-            if future_pos is None:
+            future_time = event_time + timedelta(minutes=int(horizon))
+            future_idx = ts_to_idx.get(future_time)
+            if future_idx is None:
                 continue
-            future = nq.iloc[future_pos]
+            future = nq.row(future_idx, named=True)
             future_close = float(future["Close"])
             raw_return = ((future_close - release_close) / release_close) * 100
-            window = nq.iloc[release_pos + 1:future_pos + 1]
-            if window.empty:
+
+            # Positional window [release_idx+1, future_idx] inclusive (D-07):
+            # length = future_idx - release_idx covers idx+1 .. future_idx.
+            window = nq.slice(release_idx + 1, future_idx - release_idx)
+            if window.is_empty():
                 continue
-            window_high = float(window["High"].max())
-            window_low = float(window["Low"].min())
+            window_high = float(window.get_column("High").max())
+            window_low = float(window.get_column("Low").min())
             raw_mfe = ((window_high - release_close) / release_close) * 100
             raw_mae = ((window_low - release_close) / release_close) * 100
             normalized_mfe, normalized_mae = direction_normalized_profile(
@@ -137,9 +183,9 @@ def build_forward_returns(
                     "event_datetime": event_time,
                     "horizon_minutes": int(horizon),
                     "news_candle_direction": direction,
-                    "release_open": float(release["Open"]),
-                    "release_high": float(release["High"]),
-                    "release_low": float(release["Low"]),
+                    "release_open": release_open,
+                    "release_high": release_high,
+                    "release_low": release_low,
                     "release_close": release_close,
                     "future_close": future_close,
                     "raw_forward_return_pct": raw_return,
@@ -153,7 +199,7 @@ def build_forward_returns(
                 }
             )
 
-    return pd.DataFrame(rows)
+    return pl.DataFrame(rows)
 
 
 def summarize_returns(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
