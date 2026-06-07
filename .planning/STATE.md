@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Polars Migration
 status: executing
-last_updated: "2026-06-07T02:01:34.418Z"
-last_activity: 2026-06-07 -- Phase 1 planning complete
+last_updated: "2026-06-07T02:13:05.501Z"
+last_activity: 2026-06-07
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-07)
 
 **Core value:** The post-news-release sweep methodology is the asset; everything serves keeping that research correct and easy to extend.
-**Current focus:** Phase 1 — Primary Pipeline on Polars
+**Current focus:** Phase 01 — primary-pipeline-on-polars
 
 ## Current Position
 
-Phase: 1 of 4 (Primary Pipeline on Polars)
-Plan: — of — in current phase
+Phase: 01 (primary-pipeline-on-polars) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-06-07 -- Phase 1 planning complete
+Last activity: 2026-06-07
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P01 | 9min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,7 @@ Recent decisions affecting current work:
 - Migrate-first — port the DataFrame layer before adding a unit-test net; methodology-integrity risk of porting untested core logic accepted
 - No baseline / output parity for the migration — the idea matters, not reproducing exact pandas numbers; numeric drift from the engine swap is acceptable
 - Defer shared-utils extraction, CWD-independent paths, package restructure, and validity-bug triage to Future (post-migration)
+- [Phase ?]: Phase-1 validation signal is integration smoke (smoke/phase1_smoke.py), not the pandas unit suite (expected red until Phase 3 / TEST-01)
 
 ### Pending Todos
 
@@ -93,6 +95,6 @@ Items acknowledged and carried forward / out of this milestone's scope:
 
 ## Session Continuity
 
-Last session: 2026-06-07
+Last session: 2026-06-07T02:08:33.902Z
 Stopped at: Roadmap created for v1.0 Polars Migration (4 phases, 9/9 requirements mapped); STATE.md and REQUIREMENTS.md traceability updated
 Resume file: None

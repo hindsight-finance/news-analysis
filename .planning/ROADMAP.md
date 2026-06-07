@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Wave 1: Phase-1 integration smoke harness (21-col contract + native-read + no-pandas checks), separate from the pandas `tests/` suite
+- [x] 01-01-PLAN.md — Wave 1: Phase-1 integration smoke harness (21-col contract + native-read + no-pandas checks), separate from the pandas `tests/` suite
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -91,7 +91,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Primary Pipeline on Polars | 0/4 | Not started | - |
+| 1. Primary Pipeline on Polars | 1/4 | In Progress|  |
 | 2. Independent Pipelines on Polars | 0/TBD | Not started | - |
 | 3. Test Suite on Polars | 0/TBD | Not started | - |
 | 4. Pandas Removal & Manifest Finalization | 0/TBD | Not started | - |

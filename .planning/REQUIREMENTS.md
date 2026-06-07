@@ -19,7 +19,7 @@ Requirements for the **Polars Migration** milestone. Replace pandas with polars 
 ### Environment
 
 - [ ] **ENV-01**: A version-pinned dependency manifest rebuilds the full polars-based runtime + test environment from a single install command, with pandas absent from the manifest
-- [ ] **ENV-02**: polars reads the raw Parquet inputs (`nq_1m.parquet`, `economic_events.parquet`) directly; the parquet backend dependency is resolved and pinned
+- [x] **ENV-02**: polars reads the raw Parquet inputs (`nq_1m.parquet`, `economic_events.parquet`) directly; the parquet backend dependency is resolved and pinned
 
 ### Testing
 
@@ -80,7 +80,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | MIGRATE-05 | Phase 2 | Pending |
 | MIGRATE-06 | Phase 4 | Pending |
 | ENV-01 | Phase 4 | Pending |
-| ENV-02 | Phase 1 | Pending |
+| ENV-02 | Phase 1 | Complete |
 | TEST-01 | Phase 3 | Pending |
 
 **Coverage:**
