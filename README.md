@@ -14,7 +14,7 @@ Local Parquet inputs live in ignored `data/`:
 
 ## Scripts
 
-- `main.py` — builds `data/sweep_analysis_results.parquet` from raw event and NQ data
+- `main.py` — builds `data/sweep_analysis_results.parquet` from raw event and NQ data; prints analyzed-vs-dropped event coverage (with drop reasons)
 - `exploration.py` — creates exploratory charts and `charts/exploration/summary_by_event.csv`
 - `causal_analysis.py` — trains simple interpretable models and creates causal-factor charts/CSVs
 - `injection.py` — creates per-event release-candle and 10-minute range histograms
@@ -76,4 +76,8 @@ python3 -m pytest tests -q
 
 ## Notes
 
-This repo was migrated away from Jupyter notebooks. The Python scripts are now canonical; old notebooks were removed after equivalent scripts were added.
+This repo was migrated away from Jupyter notebooks. The Python scripts are now canonical; old notebooks were removed after equivalent scripts were added. As of v1.0 the codebase runs on polars — pandas and pyarrow are no longer dependencies.
+
+Charts are written under `charts/` (and its `causal/`, `exploration/`, `forward_returns/` subdirectories), which the scripts create as needed. Stray root-level `*.png` files are gitignored — charts belong under `charts/`.
+
+The pytest suite covers the sweep-detection core (`analyze_event`), session-context gap features, forward-returns math, the exploration/causal utilities, and the `injection.py` lookup/range helpers. Run it with `python3 -m pytest tests -q`.
