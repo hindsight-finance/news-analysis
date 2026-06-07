@@ -93,19 +93,25 @@ def cv_folds(y: pl.Series, desired: int = 5) -> int:
     return int(max(0, min(desired, min_count)))
 
 
-def print_cv_score(name: str, model, X: pd.DataFrame, y: pd.Series) -> None:
-    folds = cv_folds(y)
+def print_cv_score(name: str, model, X: np.ndarray, y_np: np.ndarray, folds: int) -> None:
+    """Print cross-validated accuracy. ``folds`` is precomputed on the polars y
+    Series (in run(), before the numpy boundary) and passed in, so this helper
+    never calls ``cv_folds`` on a numpy array."""
     if folds >= 2:
-        scores = cross_val_score(model, X, y, cv=folds)
+        scores = cross_val_score(model, X, y_np, cv=folds)
         print(f"{name} CV Accuracy: {scores.mean() * 100:.1f}% (+/- {scores.std() * 100:.1f}%)")
     else:
         print(f"{name} CV Accuracy: skipped; need at least 2 samples in each class")
 
 
-def plot_feature_importance(importance: pd.DataFrame, output_path: Path) -> None:
+def plot_feature_importance(importance: pl.DataFrame, output_path: Path) -> None:
     fig, ax = plt.subplots(figsize=(10, 8))
-    colors = plt.cm.Blues(np.linspace(0.3, 1, len(importance)))
-    ax.barh(importance["feature"], importance["importance"], color=colors)
+    colors = plt.cm.Blues(np.linspace(0.3, 1, importance.height))
+    ax.barh(
+        importance.get_column("feature").to_list(),
+        importance.get_column("importance").to_numpy(),
+        color=colors,
+    )
     ax.set_xlabel("Importance", fontsize=12)
     ax.set_title("Feature Importance (Random Forest)", fontsize=14)
     fig.tight_layout()
@@ -113,10 +119,11 @@ def plot_feature_importance(importance: pd.DataFrame, output_path: Path) -> None
     plt.close(fig)
 
 
-def plot_logistic_coefficients(coefs: pd.DataFrame, output_path: Path) -> None:
+def plot_logistic_coefficients(coefs: pl.DataFrame, output_path: Path) -> None:
     fig, ax = plt.subplots(figsize=(10, 8))
-    colors = ["#2ecc71" if c < 0 else "#e74c3c" for c in coefs["coefficient"]]
-    ax.barh(coefs["feature"], coefs["coefficient"], color=colors)
+    coef_values = coefs.get_column("coefficient").to_list()
+    colors = ["#2ecc71" if c < 0 else "#e74c3c" for c in coef_values]
+    ax.barh(coefs.get_column("feature").to_list(), coef_values, color=colors)
     ax.axvline(0, color="black", linewidth=1)
     ax.set_xlabel("Coefficient (Standardized)", fontsize=12)
     ax.set_title("Logistic Regression: Effect Direction\n← Favors REVERSAL | Favors MOMENTUM →", fontsize=14)
@@ -125,20 +132,23 @@ def plot_logistic_coefficients(coefs: pd.DataFrame, output_path: Path) -> None:
     plt.close(fig)
 
 
-def plot_event_edges(event_stats: pd.DataFrame, output_path: Path) -> None:
+def plot_event_edges(event_stats: pl.DataFrame, output_path: Path) -> None:
     fig, ax = plt.subplots(figsize=(14, 10))
-    event_stats_sorted = event_stats.sort_values("momentum_rate")
-    colors = ["#2ecc71" if x < 0.5 else "#e74c3c" for x in event_stats_sorted["momentum_rate"]]
+    event_stats_sorted = event_stats.sort("momentum_rate")
+    momentum = event_stats_sorted.get_column("momentum_rate").to_numpy()
+    colors = ["#2ecc71" if x < 0.5 else "#e74c3c" for x in momentum]
     ax.barh(
-        range(len(event_stats_sorted)),
-        event_stats_sorted["momentum_rate"] * 100 - 50,
+        range(event_stats_sorted.height),
+        momentum * 100 - 50,
         color=colors,
         alpha=0.85,
         edgecolor="black",
         linewidth=0.5,
     )
-    ax.set_yticks(range(len(event_stats_sorted)))
-    ax.set_yticklabels([f"{e} (n={n})" for e, n in zip(event_stats_sorted["event_type"], event_stats_sorted["n"])])
+    ax.set_yticks(range(event_stats_sorted.height))
+    event_names = event_stats_sorted.get_column("event_type").to_list()
+    counts = event_stats_sorted.get_column("n").to_list()
+    ax.set_yticklabels([f"{e} (n={n})" for e, n in zip(event_names, counts)])
     ax.axvline(0, color="black", linewidth=1.5)
     ax.axvline(-10, color="gray", linestyle="--", alpha=0.3)
     ax.axvline(10, color="gray", linestyle="--", alpha=0.3)
@@ -152,34 +162,45 @@ def plot_event_edges(event_stats: pd.DataFrame, output_path: Path) -> None:
 def run(input_path: Path = DEFAULT_INPUT, output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     df = load_resolved_results(input_path)
-    print(f"Resolved trades: {len(df)}")
-    print(f"Momentum: {df['target'].sum()} ({df['target'].mean() * 100:.1f}%)")
-    print(f"Reversal: {(1 - df['target']).sum()} ({(1 - df['target'].mean()) * 100:.1f}%)")
+    target_sum = int(df.get_column("target").sum())
+    target_mean = df.get_column("target").mean()
+    print(f"Resolved trades: {df.height}")
+    print(f"Momentum: {target_sum} ({target_mean * 100:.1f}%)")
+    print(f"Reversal: {df.height - target_sum} ({(1 - target_mean) * 100:.1f}%)")
     print("\nAvailable columns:")
-    print(df.columns.tolist())
+    print(df.columns)
 
     features, y = build_features(df)
-    X = features.copy()
-    print(f"\nTotal features: {len(features.columns)}")
+    print(f"\nTotal features: {features.width}")
     for col in features.columns:
         print(f"  • {col}")
 
-    rf = RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42, n_jobs=-1)
-    rf.fit(X, y)
-    print_cv_score("Random Forest", rf, X, y)
-    print(f"Baseline (always predict majority): {max(y.mean(), 1 - y.mean()) * 100:.1f}%")
+    # CV fold count must be derived from the polars y Series (value_counts) BEFORE
+    # the numpy boundary; passing a numpy array to cv_folds would raise AttributeError.
+    folds = cv_folds(y)
 
-    importance = pd.DataFrame({"feature": X.columns, "importance": rf.feature_importances_}).sort_values("importance", ascending=True)
+    # --- The single polars -> numpy boundary (MIGRATE-03). Convert exactly once;
+    # feature_names is retained for importance / coefficient / tree labels. ---
+    feature_names = features.columns
+    X = features.to_numpy()
+    y_np = y.to_numpy()
+
+    rf = RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42, n_jobs=-1)
+    rf.fit(X, y_np)
+    print_cv_score("Random Forest", rf, X, y_np, folds)
+    print(f"Baseline (always predict majority): {max(y_np.mean(), 1 - y_np.mean()) * 100:.1f}%")
+
+    importance = pl.DataFrame({"feature": feature_names, "importance": rf.feature_importances_}).sort("importance")
     plot_feature_importance(importance, output_dir / "feature_importance.png")
     print("\nFeature Importance Ranking:")
-    print(importance.sort_values("importance", ascending=False).to_string(index=False))
+    print(importance.sort("importance", descending=True))
 
     tree = DecisionTreeClassifier(max_depth=4, min_samples_leaf=25, random_state=42)
-    tree.fit(X, y)
-    print_cv_score("Decision Tree", tree, X, y)
+    tree.fit(X, y_np)
+    print_cv_score("Decision Tree", tree, X, y_np, folds)
 
     fig, ax = plt.subplots(figsize=(28, 14))
-    plot_tree(tree, feature_names=list(X.columns), class_names=["Reversal", "Momentum"], filled=True, rounded=True, fontsize=9, ax=ax)
+    plot_tree(tree, feature_names=feature_names, class_names=["Reversal", "Momentum"], filled=True, rounded=True, fontsize=9, ax=ax)
     ax.set_title("Decision Tree: Predicting Momentum vs Reversal", fontsize=14)
     fig.tight_layout()
     fig.savefig(output_dir / "decision_tree.png", dpi=150, bbox_inches="tight")
@@ -188,13 +209,13 @@ def run(input_path: Path = DEFAULT_INPUT, output_dir: Path = DEFAULT_OUTPUT_DIR)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     lr = LogisticRegression(random_state=42, max_iter=1000)
-    lr.fit(X_scaled, y)
-    coefs = pd.DataFrame({"feature": X.columns, "coefficient": lr.coef_[0]}).sort_values("coefficient")
+    lr.fit(X_scaled, y_np)
+    coefs = pl.DataFrame({"feature": feature_names, "coefficient": lr.coef_[0]}).sort("coefficient")
     plot_logistic_coefficients(coefs, output_dir / "logistic_coefficients.png")
     print("\nLogistic Regression Coefficients:")
     print("Positive = pushes toward MOMENTUM")
     print("Negative = pushes toward REVERSAL\n")
-    print(coefs.to_string(index=False))
+    print(coefs)
 
     numeric_features = [
         "range_pct",
@@ -207,65 +228,73 @@ def run(input_path: Path = DEFAULT_INPUT, output_dir: Path = DEFAULT_OUTPUT_DIR)
         "time_to_first_sweep",
         "first_sweep_high",
     ]
-    correlations = pd.DataFrame({"feature": numeric_features, "correlation": [features[f].corr(y) for f in numeric_features]}).sort_values("correlation")
+    correlations = pl.DataFrame(
+        {
+            "feature": numeric_features,
+            "correlation": [
+                float(np.corrcoef(features.get_column(f).to_numpy(), y_np)[0, 1]) for f in numeric_features
+            ],
+        }
+    ).sort("correlation")
     print("\nCorrelation with MOMENTUM outcome:")
-    print(correlations.to_string(index=False))
+    print(correlations)
 
     event_stats = (
-        df.groupby("event_type")
+        df.group_by("event_type")
         .agg(
-            n=("target", "count"),
-            momentum_rate=("target", "mean"),
-            avg_range=("range_pct", "mean"),
-            avg_volume=("release_volume", "mean"),
-            avg_dist_midnight=("dist_from_midnight_open_pct", "mean"),
+            pl.len().alias("n"),
+            pl.col("target").mean().alias("momentum_rate"),
+            pl.col("range_pct").mean().alias("avg_range"),
+            pl.col("release_volume").mean().alias("avg_volume"),
+            pl.col("dist_from_midnight_open_pct").mean().alias("avg_dist_midnight"),
         )
-        .reset_index()
+        .with_columns(
+            (1 - pl.col("momentum_rate")).alias("reversal_rate"),
+            ((pl.col("momentum_rate") - 0.5).abs() * 100).alias("edge"),
+            pl.when(pl.col("momentum_rate") > 0.5).then(pl.lit("MOMENTUM")).otherwise(pl.lit("REVERSAL")).alias("direction"),
+        )
+        .sort("edge", descending=True)
     )
-    event_stats["reversal_rate"] = 1 - event_stats["momentum_rate"]
-    event_stats["edge"] = (event_stats["momentum_rate"] - 0.5).abs() * 100
-    event_stats["direction"] = event_stats["momentum_rate"].apply(lambda x: "MOMENTUM" if x > 0.5 else "REVERSAL")
-    event_stats = event_stats.sort_values("edge", ascending=False)
-    event_stats.to_csv(output_dir / "event_stats.csv", index=False)
+    event_stats.write_csv(output_dir / "event_stats.csv")
     print("\nEvents ranked by edge:")
-    print(event_stats[["event_type", "n", "momentum_rate", "edge", "direction"]].to_string(index=False))
+    print(event_stats.select("event_type", "n", "momentum_rate", "edge", "direction"))
     plot_event_edges(event_stats, output_dir / "event_edge.png")
 
-    gap_stats = df.groupby("gap_6pm_direction").agg(n=("target", "count"), momentum_rate=("target", "mean")).reset_index()
+    gap_stats = df.group_by("gap_6pm_direction").agg(pl.len().alias("n"), pl.col("target").mean().alias("momentum_rate"))
     print("\nGap Direction (6pm):")
-    print(gap_stats.to_string(index=False))
+    print(gap_stats)
 
-    df["midnight_dist_quartile"] = qcut_with_fallback_labels(
-        df["dist_from_midnight_open_pct"].fillna(0), 4, ["Q1 (far below)", "Q2", "Q3", "Q4 (far above)"]
+    df = df.with_columns(
+        qcut_with_fallback_labels(
+            df.get_column("dist_from_midnight_open_pct").fill_null(0), 4, ["Q1 (far below)", "Q2", "Q3", "Q4 (far above)"]
+        ).alias("midnight_dist_quartile")
     )
-    midnight_stats = df.groupby("midnight_dist_quartile", observed=False).agg(n=("target", "count"), momentum_rate=("target", "mean")).reset_index()
+    midnight_stats = df.group_by("midnight_dist_quartile").agg(pl.len().alias("n"), pl.col("target").mean().alias("momentum_rate"))
     print("\nDistance from Midnight Open:")
-    print(midnight_stats.to_string(index=False))
+    print(midnight_stats)
 
-    event_dummies = pd.get_dummies(df["event_type"], prefix="event")
-    X_readable = pd.concat(
-        [event_dummies, features[["first_sweep_high", "range_pct", "release_volume", "dist_from_midnight_open_pct", "gap_6pm_pct"]]],
-        axis=1,
-    )
+    event_dummies = df.select("event_type").to_dummies(columns=["event_type"])
+    readable_extra = features.select("first_sweep_high", "range_pct", "release_volume", "dist_from_midnight_open_pct", "gap_6pm_pct")
+    x_readable = pl.concat([event_dummies, readable_extra], how="horizontal")
     tree_readable = DecisionTreeClassifier(max_depth=3, min_samples_leaf=40, random_state=42)
-    tree_readable.fit(X_readable, y)
+    tree_readable.fit(x_readable.to_numpy(), y_np)
     print("\nDecision Rules:")
-    print(export_text(tree_readable, feature_names=list(X_readable.columns), max_depth=3))
+    print(export_text(tree_readable, feature_names=x_readable.columns, max_depth=3))
 
     print("\n" + "=" * 70)
     print("KEY FINDINGS")
     print("=" * 70)
     print("\nMOST PREDICTIVE FEATURES (Random Forest):")
-    for _, row in importance.sort_values("importance", ascending=False).head(5).iterrows():
+    for row in importance.sort("importance", descending=True).head(5).iter_rows(named=True):
         print(f"   • {row['feature']}: {row['importance']:.3f}")
     print("\nMOMENTUM-FAVORING EVENTS (play the box):")
-    for _, row in event_stats[event_stats["direction"] == "MOMENTUM"].head(5).iterrows():
+    for row in event_stats.filter(pl.col("direction") == "MOMENTUM").head(5).iter_rows(named=True):
         print(f"   • {row['event_type']}: {row['momentum_rate'] * 100:.0f}% momentum (n={row['n']})")
     print("\nREVERSAL-FAVORING EVENTS (play the opposite):")
-    for _, row in event_stats[event_stats["direction"] == "REVERSAL"].head(5).iterrows():
+    for row in event_stats.filter(pl.col("direction") == "REVERSAL").head(5).iter_rows(named=True):
         print(f"   • {row['event_type']}: {row['reversal_rate'] * 100:.0f}% reversal (n={row['n']})")
     print("\nSESSION CONTEXT INSIGHTS:")
-    for _, row in correlations.iterrows():
+    for row in correlations.iter_rows(named=True):
         if abs(row["correlation"]) > 0.05:
             direction = "↑ momentum" if row["correlation"] > 0 else "↓ reversal"
             print(f"   • {row['feature']}: {row['correlation']:.3f} ({direction})")
