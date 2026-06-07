@@ -66,25 +66,25 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STRUCT-01 | — | Pending |
-| STRUCT-02 | — | Pending |
-| STRUCT-03 | — | Pending |
-| REPRO-01 | — | Pending |
-| QUAL-01 | — | Pending |
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
-| HYG-01 | — | Pending |
-| HYG-02 | — | Pending |
-| HYG-03 | — | Pending |
-| VALID-01 | — | Pending |
-| VALID-02 | — | Pending |
+| STRUCT-01 | Phase 2 | Pending |
+| STRUCT-02 | Phase 2 | Pending |
+| STRUCT-03 | Phase 2 | Pending |
+| REPRO-01 | Phase 1 | Pending |
+| QUAL-01 | Phase 4 | Pending |
+| TEST-01 | Phase 3 | Pending |
+| TEST-02 | Phase 3 | Pending |
+| TEST-03 | Phase 1 | Pending |
+| HYG-01 | Phase 5 | Pending |
+| HYG-02 | Phase 5 | Pending |
+| HYG-03 | Phase 5 | Pending |
+| VALID-01 | Phase 4 | Pending |
+| VALID-02 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 13 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 13 ⚠️
+- Mapped to phases: 13 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-07*
-*Last updated: 2026-06-07 after initial definition*
+*Last updated: 2026-06-07 after roadmap creation (phase mappings populated)*
