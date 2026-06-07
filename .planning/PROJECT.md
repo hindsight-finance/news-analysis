@@ -4,19 +4,30 @@
 
 A Python research codebase that studies NQ (Nasdaq-100 futures) 1-minute price behavior around US economic news releases. The central research idea: after a news-release candle's high or low is swept, does price *reverse* to sweep the opposite side, or *continue* into a momentum box?
 
-The current milestone — **Clean Foundation** — does not add research. It refactors, hardens, and restructures the existing scripts into a clean, tested, reproducible base that future research can safely build on. The research *idea* is preserved; the code around it is rebuilt for maintainability.
+The current milestone — **Polars Migration (v1.0)** — replaces the codebase's DataFrame engine. pandas is dropped and **polars** takes its place across all five scripts and the test suite. The research *idea* and methodology are preserved; only the underlying data-handling library changes.
 
 ## Core Value
 
-The post-news-release sweep methodology is the asset. Everything in this project exists to keep that research correct, reproducible, and easy to extend. When tradeoffs arise, protect the integrity of the methodology and the raw data over code elegance or speed.
+The post-news-release sweep methodology is the asset. Everything in this project exists to keep that research correct and easy to extend. When tradeoffs arise, protect the integrity of the methodology and the raw data over code elegance or speed.
 
-For this milestone specifically: a clean, hardened, well-tested foundation that leaves the research idea intact and runnable while making the codebase a place new research can grow.
+For this milestone specifically: every script and test runs on polars instead of pandas, with the sweep methodology *logic* ported faithfully. Exact historical output reproduction is explicitly **not** a goal — the idea matters, not matching the old pandas numbers.
+
+## Current Milestone: v1.0 Polars Migration
+
+**Goal:** Replace pandas with polars as the DataFrame engine across the entire codebase — porting all five scripts and the test suite — and drop pandas.
+
+**Target features:**
+- Port all five scripts (`main.py`, `exploration.py`, `causal_analysis.py`, `forward_returns.py`, `injection.py`) from pandas → polars
+- Port the existing pytest suite to polars
+- Rewrite the dependency manifest so polars replaces pandas (drop pandas); pin a reproducible polars-based runtime + test environment; resolve the parquet backend and the `polars → numpy` boundary at the scikit-learn interface in `causal_analysis.py`
+
+**Sequencing:** Migrate-first — port the DataFrame layer before adding a unit-test net. The methodology-integrity risk of porting untested core logic (`analyze_event`, `injection.py`) is accepted. No baseline/output-parity diffing — the port is trusted, not verified against historical pandas numbers.
 
 ## Requirements
 
 ### Validated
 
-<!-- Inferred from existing code (brownfield). These already work and must keep working. -->
+<!-- Inferred from existing code (brownfield). These capabilities exist and must keep working after the polars port. -->
 
 - ✓ Sweep analysis engine — detects high/low sweeps and reversal-vs-momentum resolution after US economic events, with session-context features; produces `sweep_analysis_results.parquet` — existing (`main.py`)
 - ✓ Exploration analysis — win-rate, release-timing, range-quartile, and MAE breakdowns with charts — existing (`exploration.py`)
@@ -27,53 +38,63 @@ For this milestone specifically: a clean, hardened, well-tested foundation that 
 
 ### Active
 
-<!-- This milestone: Clean Foundation (cleanup only). -->
+<!-- This milestone: Polars Migration. Port the DataFrame engine; drop pandas. -->
 
-- [ ] Shared utilities extracted into one module (eliminate `ensure_utc` / `find_sorted_pos` / `qcut_with_fallback_labels` duplication)
-- [ ] CWD-independent data and output paths across all scripts
-- [ ] Scoped warning handling replacing the global `warnings.filterwarnings("ignore")`
-- [ ] Dependency manifest pinning the tested package set (reproducible environment)
-- [ ] Clean package / project structure
-- [ ] Repo hygiene — remove stale root-level PNGs, decide chart-output tracking, remove any lingering notebooks, rewrite the README
-- [ ] Real test coverage for the currently-untested core logic (`analyze_event`, `injection.py`)
-- [ ] Three known validity bugs acknowledged and triaged — each one's fix-or-defer decision is made during its phase discussion
+- [ ] All five scripts ported from pandas to polars, with the sweep methodology logic intact
+- [ ] scikit-learn boundary in `causal_analysis.py` handled via explicit `polars → numpy` conversion
+- [ ] Existing pytest suite ported to polars and passing
+- [ ] Dependency manifest rewritten: polars replaces pandas (pandas removed); reproducible runtime + test environment pinned; parquet backend resolved
+
+### Future
+
+<!-- Deferred from the original Clean Foundation milestone — revisit after the migration. -->
+
+- Shared utilities extracted into one module (eliminate `ensure_utc` / `find_sorted_pos` / `qcut_with_fallback_labels` duplication)
+- CWD-independent data and output paths across all scripts; CWD-independent test suite
+- Clean package / project structure with a consistent entry-point pattern
+- Direct test coverage for the currently-untested core logic (`analyze_event`, `injection.py`)
+- Scoped warning handling replacing the global `warnings.filterwarnings("ignore")`
+- Repo hygiene — stale root-level PNGs, chart-output tracking policy, lingering notebooks, README rewrite
+- Triage of the three known validity bugs (hardcoded 16:59 ET prior-close, silent event-dropping, `loc`/`iloc` mix in `get_candles_until_eod`)
 
 ### Out of Scope
 
 <!-- Deferred to future milestones, with reasons to prevent re-adding. -->
 
-- New research hypotheses or new instruments — this milestone is cleanup only; research is a future milestone
+- New research hypotheses or new instruments — this codebase's research idea is preserved, not extended, this milestone
 - Validation / backtest harness and statistical significance testing — future "new research" milestone
 - Trading-system, signal generator, or dashboard productization — far future; foundation must come first
-- Baseline output reproduction / oracle diffing — explicitly dropped; the *idea* matters, not reproducing exact historical numbers
+- Baseline output reproduction / oracle diffing — explicitly dropped; the *idea* matters, not reproducing exact historical numbers (reaffirmed for the polars migration: numeric drift from the engine swap is acceptable)
 - Deleting or modifying the raw data (`nq_1m.parquet`, `economic_events.parquet`) — irreplaceable, gitignored, no fetcher exists
-- Data-fetching / ingestion pipeline — not part of cleanup; candidate for a later reproducibility milestone
+- Data-fetching / ingestion pipeline — candidate for a later reproducibility milestone
+- Rewrite in another language — stay on Python 3.12
 
 ## Context
 
 - **Origin:** Migrated off Jupyter notebooks; the Python scripts are now canonical.
-- **Shape:** Five flat scripts at the project root forming a linear ETL — `main.py` produces `sweep_analysis_results.parquet`, consumed by `exploration.py` and `causal_analysis.py`; `forward_returns.py` and `injection.py` are independent pipelines that re-read raw data.
-- **Data:** NQ 1-minute OHLCV (2010–2026) and a US economic event calendar, both local Parquet, gitignored. No data-fetching code and no provenance recorded in the repo — the raw files are irreplaceable from this codebase alone.
-- **Stack today:** Python 3.12 with pandas, numpy, matplotlib, scikit-learn, pyarrow; no `requirements.txt` / `pyproject.toml` / lockfile.
+- **Shape:** Five flat scripts at the project root forming a linear ETL — `main.py` produces `sweep_analysis_results.parquet`, consumed by `exploration.py` and `causal_analysis.py`; `forward_returns.py` and `injection.py` are independent pipelines that re-read raw data. All currently pandas-based.
+- **Data:** NQ 1-minute OHLCV (2010–2026) and a US economic event calendar, both local Parquet, gitignored. No data-fetching code — the raw files are irreplaceable from this codebase alone. Polars reads Parquet natively.
+- **Stack today:** Python 3.12 with pandas, numpy, matplotlib, scikit-learn, pyarrow; polars 1.40.1 is already installed but unused. Migration target: polars in, pandas out.
 - **Latest findings (4,792 events):** opposite side swept 80.6%; momentum-box-first 52.2% vs reversal-first 45.7% — the central near-coin-flip the research probes.
-- **Known fragility:** `analyze_event` (the core logic) and `injection.py` have zero direct tests; three validity bugs can bias findings (hardcoded 16:59 ET prior-close → zero-imputed gap features, silent event-dropping on candle-lookup misses, `loc`/`iloc` mix in `get_candles_until_eod`).
+- **Migration touch points:** all five scripts use pandas DataFrames pervasively; the test suite is pandas-based; `causal_analysis.py` feeds DataFrames into scikit-learn (needs numpy at that boundary); `np.searchsorted` timestamp-lookup optimizations in `main.py`/`forward_returns.py` will need polars equivalents.
 - **Reference:** Full codebase map at `.planning/codebase/` (mapped 2026-06-07).
 
 ## Constraints
 
-- **Tech stack**: Stay on Python 3.12 + pandas/numpy/matplotlib/scikit-learn — no rewrite in another language.
-- **Data**: Raw Parquet inputs are irreplaceable and gitignored — must not be deleted or modified by cleanup.
-- **Methodology**: The sweep research idea must survive the refactor intact — code structure is disposable, the methodology is not.
-- **Output parity**: No baseline diffing required — preserve the idea, not exact historical numbers; favor a clean result over byte-for-byte output parity.
+- **Tech stack**: Python 3.12 + **polars**/numpy/matplotlib/scikit-learn. pandas is being removed this milestone. No rewrite in another language.
+- **Data**: Raw Parquet inputs are irreplaceable and gitignored — must not be deleted or modified by the migration.
+- **Methodology**: The sweep research *logic* must survive the migration intact — code structure and DataFrame engine are disposable, the methodology is not.
+- **Output parity**: Not required. Favor a correct, idiomatic polars port over byte-for-byte parity with the old pandas numbers.
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Refactor in place rather than rewrite from scratch | Preserve the methodology and 16 years of findings at lowest risk | — Pending |
-| Scope this milestone to cleanup only | Keep it tight; defer all new research to later milestones | — Pending |
-| Drop baseline / oracle output comparison | User cares about the research idea, not reproducing exact numbers | — Pending |
-| Decide each validity-bug fix per phase | Number-changing fixes deserve focused, individual attention in phase discussion | — Pending |
+| Pivot the project to polars, dropping pandas | polars is the chosen DataFrame engine going forward | — Active (v1.0) |
+| Migrate-first — port before adding the unit-test net | Speed; user accepted the methodology-integrity risk of porting untested core logic | — Active (v1.0) |
+| No baseline / output parity for the migration | The research idea matters, not reproducing exact pandas numbers | — Locked |
+| ~~Refactor in place (cleanup-only Clean Foundation milestone)~~ | Superseded by the polars pivot | — Superseded 2026-06-07 |
+| ~~Scope first milestone to cleanup only~~ | Superseded by the polars pivot; cleanup items moved to Future | — Superseded 2026-06-07 |
 
 ## Evolution
 
@@ -93,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-07 after initialization*
+*Last updated: 2026-06-07 — pivoted to v1.0 Polars Migration (replaces unshipped Clean Foundation)*
