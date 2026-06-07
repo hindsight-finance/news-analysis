@@ -178,36 +178,39 @@ def create_histograms(event_name: str, release_ranges: list, release_volumes: li
 def main():
     print("Loading data...")
     events, nq = load_data()
-    
+
+    # Pure-polars exact-match release lookup, built once over all events (D-02/D-03).
+    ts_to_idx = build_release_index(events, nq)
+
     # Get unique event titles
-    unique_events = events['title'].unique()
+    unique_events = events.get_column("title").unique().to_list()
     print(f"Found {len(unique_events)} unique event types")
-    
+
     # Process each event type
     for event_name in unique_events:
         print(f"\nProcessing: {event_name}")
-        
+
         # Get all occurrences of this event
-        event_occurrences = events[events['title'] == event_name]
-        
+        event_occurrences = events.filter(pl.col("title") == event_name)
+
         release_ranges = []
         release_volumes = []
         ten_min_ranges = []
-        
-        for _, row in event_occurrences.iterrows():
-            event_time = row['datetime_utc']
-            
+
+        for row in event_occurrences.iter_rows(named=True):
+            event_time = row["datetime_utc"]
+
             # Get release candle data (range and volume)
-            release_data = get_release_candle_data(nq, event_time)
+            release_data = get_release_candle_data(nq, ts_to_idx, event_time)
             if release_data is not None:
                 release_ranges.append(release_data[0])
                 release_volumes.append(release_data[1])
-            
+
             # Get 10-minute range
             ten_min_range = get_10min_range(nq, event_time)
             if ten_min_range is not None:
                 ten_min_ranges.append(ten_min_range)
-        
+
         # Create histograms if we have data
         if release_ranges or ten_min_ranges:
             filepath = create_histograms(event_name, release_ranges, release_volumes, ten_min_ranges)
@@ -216,7 +219,7 @@ def main():
             print(f"  10-min window samples: {len(ten_min_ranges)}")
         else:
             print(f"  No matching price data found for this event")
-    
+
     print(f"\n✓ All charts saved to: {OUTPUT_DIR}")
 
 
