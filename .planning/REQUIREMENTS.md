@@ -9,7 +9,7 @@ Requirements for the **Polars Migration** milestone. Replace pandas with polars 
 
 ### Migration
 
-- [ ] **MIGRATE-01**: `main.py` sweep engine runs on polars — data loading and all DataFrame operations use polars; `sweep_analysis_results.parquet` is still produced and the sweep methodology logic is preserved
+- [x] **MIGRATE-01**: `main.py` sweep engine runs on polars — data loading and all DataFrame operations use polars; `sweep_analysis_results.parquet` is still produced and the sweep methodology logic is preserved
 - [ ] **MIGRATE-02**: `exploration.py` runs on polars — win-rate, release-timing, range-quartile, and MAE computations and their chart inputs use polars
 - [ ] **MIGRATE-03**: `causal_analysis.py` runs on polars for data handling, with an explicit `polars → numpy` conversion at the scikit-learn boundary so models receive numpy arrays
 - [ ] **MIGRATE-04**: `forward_returns.py` runs on polars, including a polars replacement for the `np.searchsorted` timestamp-lookup optimization
@@ -73,7 +73,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MIGRATE-01 | Phase 1 | Pending |
+| MIGRATE-01 | Phase 1 | Complete |
 | MIGRATE-02 | Phase 1 | Pending |
 | MIGRATE-03 | Phase 1 | Pending |
 | MIGRATE-04 | Phase 2 | Pending |

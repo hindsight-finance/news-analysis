@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Polars Migration
 status: executing
-last_updated: "2026-06-07T02:13:05.501Z"
+last_updated: "2026-06-07T02:25:49.849Z"
 last_activity: 2026-06-07
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-06-07)
 ## Current Position
 
 Phase: 01 (primary-pipeline-on-polars) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-06-07
 
-Progress: [███░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [███░░░░░░░] 25%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 9min | 1 tasks | 1 files |
+| Phase 01 P02 | 13min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,9 @@ Recent decisions affecting current work:
 - No baseline / output parity for the migration — the idea matters, not reproducing exact pandas numbers; numeric drift from the engine swap is acceptable
 - Defer shared-utils extraction, CWD-independent paths, package restructure, and validity-bug triage to Future (post-migration)
 - [Phase ?]: Phase-1 validation signal is integration smoke (smoke/phase1_smoke.py), not the pandas unit suite (expected red until Phase 3 / TEST-01)
+- [Phase ?]: main.py ported to polars: preserve numpy methodology kernel verbatim, port only the I/O boundary (load/lookup/extract/write)
+- [Phase ?]: Pinned output via module-level CONTRACT_SCHEMA (21 cols, ns/UTC event_datetime, Int64 release_volume, Float64 pre_candle_volume) to stop dict-inference dtype drift
+- [Phase ?]: Replaced nq.attrs lookup cache with an explicitly-threaded lookups dict of ns-int64 arrays (polars has no per-frame metadata)
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ Items acknowledged and carried forward / out of this milestone's scope:
 
 ## Session Continuity
 
-Last session: 2026-06-07T02:08:33.902Z
-Stopped at: Roadmap created for v1.0 Polars Migration (4 phases, 9/9 requirements mapped); STATE.md and REQUIREMENTS.md traceability updated
+Last session: 2026-06-07T02:25:49.819Z
+Stopped at: Completed 01-02-PLAN.md (main.py ported to polars; 21-col contract regenerated, 4792 rows)
 Resume file: None
