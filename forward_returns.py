@@ -202,55 +202,61 @@ def build_forward_returns(
     return pl.DataFrame(rows)
 
 
-def summarize_returns(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def summarize_returns(df: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     raw_summary = (
-        df.groupby(["horizon_minutes", "news_candle_direction"], dropna=False, observed=False)
+        df.group_by(["horizon_minutes", "news_candle_direction"])
         .agg(
-            count=("raw_forward_return_pct", "size"),
-            mean_return_pct=("raw_forward_return_pct", "mean"),
-            median_return_pct=("raw_forward_return_pct", "median"),
-            win_rate=("raw_forward_return_pct", lambda x: (x > 0).mean() * 100),
-            p25=("raw_forward_return_pct", lambda x: x.quantile(0.25)),
-            p75=("raw_forward_return_pct", lambda x: x.quantile(0.75)),
+            pl.len().alias("count"),
+            pl.col("raw_forward_return_pct").mean().alias("mean_return_pct"),
+            pl.col("raw_forward_return_pct").median().alias("median_return_pct"),
+            ((pl.col("raw_forward_return_pct") > 0).mean() * 100).alias("win_rate"),
+            pl.col("raw_forward_return_pct").quantile(0.25).alias("p25"),
+            pl.col("raw_forward_return_pct").quantile(0.75).alias("p75"),
         )
-        .reset_index()
+        .sort(["horizon_minutes", "news_candle_direction"])
     )
 
-    normalized = df[df["direction_normalized_return_pct"].notna()].copy()
+    # D-09: flat-direction rows carry float np.nan (not polars null) -> is_not_nan.
+    normalized = df.filter(pl.col("direction_normalized_return_pct").is_not_nan())
     normalized_summary = (
-        normalized.groupby("horizon_minutes", dropna=False, observed=False)
+        normalized.group_by("horizon_minutes")
         .agg(
-            count=("direction_normalized_return_pct", "size"),
-            mean_return_pct=("direction_normalized_return_pct", "mean"),
-            median_return_pct=("direction_normalized_return_pct", "median"),
-            continuation_rate=("direction_normalized_return_pct", lambda x: (x > 0).mean() * 100),
-            p25=("direction_normalized_return_pct", lambda x: x.quantile(0.25)),
-            p75=("direction_normalized_return_pct", lambda x: x.quantile(0.75)),
+            pl.len().alias("count"),
+            pl.col("direction_normalized_return_pct").mean().alias("mean_return_pct"),
+            pl.col("direction_normalized_return_pct").median().alias("median_return_pct"),
+            ((pl.col("direction_normalized_return_pct") > 0).mean() * 100).alias("continuation_rate"),
+            pl.col("direction_normalized_return_pct").quantile(0.25).alias("p25"),
+            pl.col("direction_normalized_return_pct").quantile(0.75).alias("p75"),
         )
-        .reset_index()
+        .sort("horizon_minutes")
     )
     return raw_summary, normalized_summary
 
 
-def summarize_path_profiles(df: pd.DataFrame) -> pd.DataFrame:
-    normalized = df[df["direction_normalized_mfe_pct"].notna()].copy()
+def summarize_path_profiles(df: pl.DataFrame) -> pl.DataFrame:
+    # D-09: exclude flat-direction NaN rows via is_not_nan (is_not_null would not drop NaN).
+    normalized = df.filter(pl.col("direction_normalized_mfe_pct").is_not_nan())
     return (
-        normalized.groupby("horizon_minutes", dropna=False, observed=False)
+        normalized.group_by("horizon_minutes")
         .agg(
-            count=("direction_normalized_mfe_pct", "size"),
-            mean_mfe_pct=("direction_normalized_mfe_pct", "mean"),
-            median_mfe_pct=("direction_normalized_mfe_pct", "median"),
-            mean_mae_pct=("direction_normalized_mae_pct", "mean"),
-            median_mae_pct=("direction_normalized_mae_pct", "median"),
+            pl.len().alias("count"),
+            pl.col("direction_normalized_mfe_pct").mean().alias("mean_mfe_pct"),
+            pl.col("direction_normalized_mfe_pct").median().alias("median_mfe_pct"),
+            pl.col("direction_normalized_mae_pct").mean().alias("mean_mae_pct"),
+            pl.col("direction_normalized_mae_pct").median().alias("median_mae_pct"),
         )
-        .reset_index()
+        .sort("horizon_minutes")
     )
 
 
-def plot_raw_by_direction(df: pd.DataFrame, horizon: int, output_path: Path) -> None:
-    horizon_df = df[df["horizon_minutes"] == horizon].copy()
-    directions = [d for d in ["up", "down", "flat"] if d in set(horizon_df["news_candle_direction"])]
-    data = [horizon_df.loc[horizon_df["news_candle_direction"] == d, "raw_forward_return_pct"] for d in directions]
+def plot_raw_by_direction(df: pl.DataFrame, horizon: int, output_path: Path) -> None:
+    horizon_df = df.filter(pl.col("horizon_minutes") == horizon)
+    present = set(horizon_df.get_column("news_candle_direction").to_list())
+    directions = [d for d in ["up", "down", "flat"] if d in present]
+    data = [
+        horizon_df.filter(pl.col("news_candle_direction") == d).get_column("raw_forward_return_pct").to_numpy()
+        for d in directions
+    ]
 
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.boxplot(data, labels=directions, showfliers=False)
@@ -259,7 +265,7 @@ def plot_raw_by_direction(df: pd.DataFrame, horizon: int, output_path: Path) -> 
         jitter = rng.normal(0, 0.035, size=len(values))
         ax.scatter(np.full(len(values), idx) + jitter, values, alpha=0.25, s=10)
     ax.axhline(0, color="black", linewidth=1, alpha=0.7)
-    ax.set_title(f"{horizon}m Raw Forward Returns by News Candle Direction (n={len(horizon_df)})")
+    ax.set_title(f"{horizon}m Raw Forward Returns by News Candle Direction (n={horizon_df.height})")
     ax.set_xlabel("Release candle direction")
     ax.set_ylabel("Forward return from release close (%)")
     fig.tight_layout()
@@ -267,15 +273,20 @@ def plot_raw_by_direction(df: pd.DataFrame, horizon: int, output_path: Path) -> 
     plt.close(fig)
 
 
-def plot_direction_normalized(df: pd.DataFrame, horizon: int, output_path: Path) -> None:
-    values = df.loc[
-        (df["horizon_minutes"] == horizon) & df["direction_normalized_return_pct"].notna(),
-        "direction_normalized_return_pct",
-    ]
+def plot_direction_normalized(df: pl.DataFrame, horizon: int, output_path: Path) -> None:
+    values = (
+        df.filter(
+            (pl.col("horizon_minutes") == horizon)
+            & pl.col("direction_normalized_return_pct").is_not_nan()
+        )
+        .get_column("direction_normalized_return_pct")
+        .to_numpy()
+    )
+    median = float(np.median(values)) if len(values) else float("nan")
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.hist(values, bins=50, edgecolor="black", alpha=0.75, color="#4c78a8")
     ax.axvline(0, color="black", linewidth=1.2, alpha=0.8)
-    ax.axvline(values.median(), color="red", linestyle="--", label=f"Median: {values.median():.3f}%")
+    ax.axvline(median, color="red", linestyle="--", label=f"Median: {median:.3f}%")
     ax.set_title(f"{horizon}m Direction-Normalized Forward Returns (n={len(values)})")
     ax.set_xlabel("Return normalized to release candle direction (%)\npositive = continuation, negative = fade")
     ax.set_ylabel("Frequency")
@@ -285,16 +296,20 @@ def plot_direction_normalized(df: pd.DataFrame, horizon: int, output_path: Path)
     plt.close(fig)
 
 
-def plot_mae_mfe_by_direction(df: pd.DataFrame, horizon: int, output_path: Path) -> None:
-    horizon_df = df[df["horizon_minutes"] == horizon].copy()
-    directions = [d for d in ["up", "down", "flat"] if d in set(horizon_df["news_candle_direction"])]
+def plot_mae_mfe_by_direction(df: pl.DataFrame, horizon: int, output_path: Path) -> None:
+    horizon_df = df.filter(pl.col("horizon_minutes") == horizon)
+    present = set(horizon_df.get_column("news_candle_direction").to_list())
+    directions = [d for d in ["up", "down", "flat"] if d in present]
     positions: list[float] = []
-    data: list[pd.Series] = []
+    data: list[np.ndarray] = []
     labels: list[str] = []
     for idx, direction in enumerate(directions, start=1):
-        subset = horizon_df[horizon_df["news_candle_direction"] == direction]
+        subset = horizon_df.filter(pl.col("news_candle_direction") == direction)
         positions.extend([idx - 0.18, idx + 0.18])
-        data.extend([subset["raw_mae_pct"], subset["raw_mfe_pct"]])
+        data.extend([
+            subset.get_column("raw_mae_pct").to_numpy(),
+            subset.get_column("raw_mfe_pct").to_numpy(),
+        ])
         labels.extend([f"{direction}\nMAE", f"{direction}\nMFE"])
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -302,26 +317,30 @@ def plot_mae_mfe_by_direction(df: pd.DataFrame, horizon: int, output_path: Path)
     ax.axhline(0, color="black", linewidth=1, alpha=0.7)
     ax.set_xticks(positions)
     ax.set_xticklabels(labels)
-    ax.set_title(f"{horizon}m Raw MAE/MFE by News Candle Direction (n={len(horizon_df)})")
+    ax.set_title(f"{horizon}m Raw MAE/MFE by News Candle Direction (n={horizon_df.height})")
     ax.set_ylabel("Excursion from release close (%)")
     fig.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
-def plot_normalized_mae_mfe_scatter(df: pd.DataFrame, horizon: int, output_path: Path) -> None:
-    horizon_df = df[
-        (df["horizon_minutes"] == horizon)
-        & df["direction_normalized_mfe_pct"].notna()
-        & df["direction_normalized_mae_pct"].notna()
-    ].copy()
+def plot_normalized_mae_mfe_scatter(df: pl.DataFrame, horizon: int, output_path: Path) -> None:
+    horizon_df = df.filter(
+        (pl.col("horizon_minutes") == horizon)
+        & pl.col("direction_normalized_mfe_pct").is_not_nan()
+        & pl.col("direction_normalized_mae_pct").is_not_nan()
+    )
     colors = {"up": "#e74c3c", "down": "#2ecc71", "flat": "#7f8c8d"}
 
     fig, ax = plt.subplots(figsize=(7, 6))
-    for direction, subset in horizon_df.groupby("news_candle_direction", observed=False):
+    # polars group_by is unordered; iterate an explicit ordered direction list instead.
+    for direction in ["up", "down", "flat"]:
+        subset = horizon_df.filter(pl.col("news_candle_direction") == direction)
+        if subset.is_empty():
+            continue
         ax.scatter(
-            subset["direction_normalized_mae_pct"],
-            subset["direction_normalized_mfe_pct"],
+            subset.get_column("direction_normalized_mae_pct").to_numpy(),
+            subset.get_column("direction_normalized_mfe_pct").to_numpy(),
             s=12,
             alpha=0.35,
             label=direction,
@@ -329,7 +348,7 @@ def plot_normalized_mae_mfe_scatter(df: pd.DataFrame, horizon: int, output_path:
         )
     ax.axhline(0, color="black", linewidth=1, alpha=0.7)
     ax.axvline(0, color="black", linewidth=1, alpha=0.7)
-    ax.set_title(f"{horizon}m Direction-Normalized MAE/MFE Profile (n={len(horizon_df)})")
+    ax.set_title(f"{horizon}m Direction-Normalized MAE/MFE Profile (n={horizon_df.height})")
     ax.set_xlabel("Normalized MAE (%)\nnegative = adverse excursion")
     ax.set_ylabel("Normalized MFE (%)\npositive = favorable continuation excursion")
     ax.legend(title="Candle direction")
@@ -338,10 +357,10 @@ def plot_normalized_mae_mfe_scatter(df: pd.DataFrame, horizon: int, output_path:
     plt.close(fig)
 
 
-def write_outputs(df: pd.DataFrame, output_dir: Path) -> None:
+def write_outputs(df: pl.DataFrame, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_dir / "forward_returns_by_event.csv", index=False)
-    for horizon in sorted(df["horizon_minutes"].unique()):
+    df.write_csv(output_dir / "forward_returns_by_event.csv")
+    for horizon in sorted(df.get_column("horizon_minutes").unique().to_list()):
         plot_raw_by_direction(df, int(horizon), output_dir / f"forward_returns_{int(horizon)}m_raw_by_direction.png")
         plot_direction_normalized(df, int(horizon), output_dir / f"forward_returns_{int(horizon)}m_direction_normalized.png")
         plot_mae_mfe_by_direction(df, int(horizon), output_dir / f"forward_returns_{int(horizon)}m_mae_mfe_by_direction.png")
@@ -358,22 +377,23 @@ def run(
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     horizons: tuple[int, ...] = DEFAULT_HORIZONS,
 ) -> None:
-    events = pd.read_parquet(input_events)
-    nq = pd.read_parquet(input_nq)
+    events = pl.read_parquet(input_events, use_pyarrow=False)
+    nq = pl.read_parquet(input_nq, use_pyarrow=False)
     df = build_forward_returns(events, nq, horizons=horizons)
-    if df.empty:
+    if df.is_empty():
         raise ValueError("No forward return rows produced; check event/NQ timestamp alignment")
     write_outputs(df, output_dir)
     raw_summary, normalized_summary = summarize_returns(df)
     path_summary = summarize_path_profiles(df)
-    print(f"Built {len(df)} event/horizon forward-return rows")
+    print(f"Built {df.height} event/horizon forward-return rows")
     print(f"Wrote outputs to {output_dir}")
-    print("\nRaw returns by horizon and release candle direction:")
-    print(raw_summary.round(4).to_string(index=False))
-    print("\nDirection-normalized returns by horizon:")
-    print(normalized_summary.round(4).to_string(index=False))
-    print("\nDirection-normalized MAE/MFE path profiles by horizon:")
-    print(path_summary.round(4).to_string(index=False))
+    with pl.Config(tbl_rows=-1):
+        print("\nRaw returns by horizon and release candle direction:")
+        print(raw_summary.with_columns(pl.col(pl.Float64).round(4)))
+        print("\nDirection-normalized returns by horizon:")
+        print(normalized_summary.with_columns(pl.col(pl.Float64).round(4)))
+        print("\nDirection-normalized MAE/MFE path profiles by horizon:")
+        print(path_summary.with_columns(pl.col(pl.Float64).round(4)))
 
 
 def parse_args() -> argparse.Namespace:
