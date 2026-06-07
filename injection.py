@@ -6,9 +6,12 @@ Generates histograms of price ranges for each news event:
 Ranges are normalized to percentages.
 """
 
-import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import polars as pl
+from datetime import timedelta
 from pathlib import Path
 
 # Setup paths
@@ -17,18 +20,35 @@ OUTPUT_DIR = Path(__file__).parent / "charts"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 def load_data():
-    """Load economic events and NQ 1m price data."""
-    events = pd.read_parquet(DATA_DIR / "economic_events.parquet")
-    nq = pd.read_parquet(DATA_DIR / "nq_1m.parquet")
-    
-    # Ensure DateTime_UTC is datetime with timezone
-    nq['DateTime_UTC'] = pd.to_datetime(nq['DateTime_UTC']).dt.tz_localize('UTC')
-    events['datetime_utc'] = pd.to_datetime(events['datetime_utc'])
-    
-    # Ensure events datetime is UTC-aware
-    if events['datetime_utc'].dt.tz is None:
-        events['datetime_utc'] = events['datetime_utc'].dt.tz_localize('UTC')
-    
+    """Load economic events and NQ 1m price data (polars; mirrors main.py:load_data).
+
+    The on-disk nq column is ``datetime_utc`` (us precision); rename to ``DateTime_UTC``,
+    stamp/convert to UTC, then force ns precision so the pure-polars equality lookup
+    matches the ns events key (D-05). Skipping the cast silently drops every event.
+    """
+    events = pl.read_parquet(DATA_DIR / "economic_events.parquet", use_pyarrow=False)
+    nq = pl.read_parquet(DATA_DIR / "nq_1m.parquet", use_pyarrow=False)
+
+    if "DateTime_UTC" not in nq.columns and "datetime_utc" in nq.columns:
+        nq = nq.rename({"datetime_utc": "DateTime_UTC"})
+
+    # Normalize DateTime_UTC to tz-aware UTC (naive -> stamp UTC; aware -> convert).
+    if nq.schema["DateTime_UTC"].time_zone is None:
+        nq = nq.with_columns(pl.col("DateTime_UTC").dt.replace_time_zone("UTC"))
+    else:
+        nq = nq.with_columns(pl.col("DateTime_UTC").dt.convert_time_zone("UTC"))
+
+    # D-05: us -> ns so the equality/join lookup matches the ns event key.
+    nq = nq.with_columns(pl.col("DateTime_UTC").dt.cast_time_unit("ns"))
+
+    # Normalize events datetime_utc to tz-aware UTC, ns precision (D-05).
+    if events.schema["datetime_utc"].time_zone is None:
+        events = events.with_columns(pl.col("datetime_utc").dt.replace_time_zone("UTC"))
+    else:
+        events = events.with_columns(pl.col("datetime_utc").dt.convert_time_zone("UTC"))
+    events = events.with_columns(pl.col("datetime_utc").dt.cast_time_unit("ns"))
+
+    nq = nq.sort("DateTime_UTC")
     return events, nq
 
 
@@ -37,34 +57,63 @@ def calculate_percentage_range(high, low, reference_price):
     return ((high - low) / reference_price) * 100
 
 
-def get_release_candle_data(nq: pd.DataFrame, event_time: pd.Timestamp) -> tuple[float, int] | None:
-    """Get the percentage range and volume of the 1-minute candle at event release time."""
-    # Find the exact minute matching the event time
-    mask = nq['DateTime_UTC'] == event_time
-    candle = nq[mask]
-    
-    if candle.empty:
-        return None
-    
-    candle = candle.iloc[0]
-    pct_range = calculate_percentage_range(candle['High'], candle['Low'], candle['Open'])
-    return pct_range, candle['Volume']
+def build_release_index(events: pl.DataFrame, nq: pl.DataFrame) -> dict:
+    """Pure-polars exact-match lookup: event timestamp -> nq row index (D-02/D-03/D-04).
+
+    Inner-joins every event datetime against ``nq[[DateTime_UTC, idx]]`` in one pass
+    (exact-match; misses drop, reproducing the old ``if candle.empty: return None``,
+    D-04), then collapses the matches into a ``{timestamp: idx}`` dict. This is the same
+    pure-polars construct ``forward_returns.py`` uses (D-03) — it replaces the old
+    per-event full-frame boolean-mask scan (the documented D-02 anti-pattern) and uses
+    no as-of/nearest-match join.
+    """
+    nq_keys = nq.with_row_index("idx").select(["DateTime_UTC", "idx"])
+    wanted = events.select(
+        pl.col("datetime_utc").dt.cast_time_unit("ns").alias("DateTime_UTC")
+    ).unique()
+    matched = wanted.join(nq_keys, on="DateTime_UTC", how="inner")
+    return dict(
+        zip(
+            matched.get_column("DateTime_UTC").to_list(),
+            matched.get_column("idx").to_list(),
+        )
+    )
 
 
-def get_10min_range(nq: pd.DataFrame, event_time: pd.Timestamp) -> float | None:
-    """Get the percentage range of the 10-minute window following event release (inclusive)."""
-    # Get candles from event_time to event_time + 9 minutes (10 candles total)
-    end_time = event_time + pd.Timedelta(minutes=9)
-    mask = (nq['DateTime_UTC'] >= event_time) & (nq['DateTime_UTC'] <= end_time)
-    candles = nq[mask]
-    
-    if candles.empty:
+def get_release_candle_data(nq: pl.DataFrame, ts_to_idx: dict, event_time) -> tuple[float, int] | None:
+    """Get the percentage range and volume of the 1-minute release candle, or None.
+
+    Resolves ``event_time`` to an nq row index via the pre-built exact-match lookup
+    (D-02); a miss returns ``None`` exactly as the old ``if candle.empty`` guard (D-04).
+    """
+    idx = ts_to_idx.get(event_time)
+    if idx is None:
         return None
-    
-    high = candles['High'].max()
-    low = candles['Low'].min()
-    reference_price = candles.iloc[0]['Open']  # Use first candle's open as reference
-    
+
+    candle = nq.row(idx, named=True)
+    pct_range = calculate_percentage_range(candle["High"], candle["Low"], candle["Open"])
+    return pct_range, candle["Volume"]
+
+
+def get_10min_range(nq: pl.DataFrame, event_time) -> float | None:
+    """Percentage range of the inclusive 10-minute window [event_time, event_time+9min].
+
+    D-06: a TIME-bounded ``is_between`` filter (robust to missing minutes/gaps), NOT a
+    positional +9-row slice. Returns ``None`` when no candle falls in the window.
+    """
+    # Get candles from event_time to event_time + 9 minutes (inclusive both ends).
+    end_time = event_time + timedelta(minutes=9)
+    candles = nq.filter(
+        pl.col("DateTime_UTC").is_between(event_time, end_time, closed="both")
+    )
+
+    if candles.is_empty():
+        return None
+
+    high = candles.get_column("High").max()
+    low = candles.get_column("Low").min()
+    reference_price = candles.row(0, named=True)["Open"]  # first candle by time (nq sorted)
+
     return calculate_percentage_range(high, low, reference_price)
 
 
