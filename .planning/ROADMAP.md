@@ -14,7 +14,7 @@ This milestone swaps the DataFrame engine from pandas to polars across the whole
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Primary Pipeline on Polars** - Port `main.py` and its two consumers, keeping the intermediate parquet contract intact and enabling direct polars parquet reads (completed 2026-06-07)
-- [ ] **Phase 2: Independent Pipelines on Polars** - Port `forward_returns.py` and `injection.py`, including a polars timestamp-lookup replacement
+- [x] **Phase 2: Independent Pipelines on Polars** - Port `forward_returns.py` and `injection.py`, including a polars timestamp-lookup replacement (completed 2026-06-07)
 - [ ] **Phase 3: Test Suite on Polars** - Port the pytest suite (fixtures and assertions) to polars and get it green against the ported scripts
 - [ ] **Phase 4: Pandas Removal & Manifest Finalization** - Remove all remaining pandas imports and pin a reproducible, pandas-free polars runtime
 
@@ -61,7 +61,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Wave 1**
 
 - [x] 02-01-PLAN.md — Port `forward_returns.py` to polars (MIGRATE-04) — pure-polars exact-match lookup replacing `np.searchsorted`, ns/UTC precision guard, positional window, group_by/agg summaries + charts
-- [ ] 02-02-PLAN.md — Port `injection.py` to polars (MIGRATE-05) — pure-polars exact-match release lookup replacing the linear scan, time-bounded 10-min window, `Agg` guard, main() shape preserved
+- [x] 02-02-PLAN.md — Port `injection.py` to polars (MIGRATE-05) — pure-polars exact-match release lookup replacing the linear scan, time-bounded 10-min window, `Agg` guard, main() shape preserved
 
 ### Phase 3: Test Suite on Polars
 
@@ -97,6 +97,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Primary Pipeline on Polars | 4/4 | Complete    | 2026-06-07 |
-| 2. Independent Pipelines on Polars | 1/2 | In Progress|  |
+| 2. Independent Pipelines on Polars | 2/2 | Complete   | 2026-06-07 |
 | 3. Test Suite on Polars | 0/TBD | Not started | - |
 | 4. Pandas Removal & Manifest Finalization | 0/TBD | Not started | - |

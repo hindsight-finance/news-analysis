@@ -13,7 +13,7 @@ Requirements for the **Polars Migration** milestone. Replace pandas with polars 
 - [x] **MIGRATE-02**: `exploration.py` runs on polars — win-rate, release-timing, range-quartile, and MAE computations and their chart inputs use polars
 - [x] **MIGRATE-03**: `causal_analysis.py` runs on polars for data handling, with an explicit `polars → numpy` conversion at the scikit-learn boundary so models receive numpy arrays
 - [x] **MIGRATE-04**: `forward_returns.py` runs on polars, including a polars replacement for the `np.searchsorted` timestamp-lookup optimization
-- [ ] **MIGRATE-05**: `injection.py` runs on polars — range calculation and histogram inputs use polars
+- [x] **MIGRATE-05**: `injection.py` runs on polars — range calculation and histogram inputs use polars
 - [ ] **MIGRATE-06**: No `import pandas` remains anywhere in the scripts or tests (pandas fully removed from source)
 
 ### Environment
@@ -77,7 +77,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | MIGRATE-02 | Phase 1 | Complete |
 | MIGRATE-03 | Phase 1 | Complete |
 | MIGRATE-04 | Phase 2 | Complete |
-| MIGRATE-05 | Phase 2 | Pending |
+| MIGRATE-05 | Phase 2 | Complete |
 | MIGRATE-06 | Phase 4 | Pending |
 | ENV-01 | Phase 4 | Pending |
 | ENV-02 | Phase 1 | Complete |
