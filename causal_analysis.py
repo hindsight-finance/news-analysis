@@ -15,7 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import polars as pl
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
@@ -28,56 +28,69 @@ DEFAULT_INPUT = Path("data/sweep_analysis_results.parquet")
 DEFAULT_OUTPUT_DIR = Path("charts/causal")
 
 
-def qcut_with_fallback_labels(series: pd.Series, q: int, labels: list[str]) -> pd.Series:
-    """Quantile-cut a series, dropping labels when duplicate edges reduce bins."""
-    try:
-        return pd.qcut(series, q, labels=labels, duplicates="drop")
-    except ValueError as exc:
-        if "Bin labels must be one fewer" not in str(exc):
-            raise
-        return pd.qcut(series, q, duplicates="drop")
+def qcut_with_fallback_labels(series: pl.Series, q: int, labels: list[str]) -> pl.Series:
+    """Quantile-cut a series; polars resolves duplicate edges via allow_duplicates.
+
+    Unlike pandas (which raises "Bin labels must be one fewer" when duplicate edges
+    collapse bins), polars' ``Series.qcut(..., allow_duplicates=True)`` never raises:
+    it returns a Categorical assigning only the labels that map to real bins. These
+    bins are display/reporting only, so exact edges need not match pandas.
+    """
+    return series.qcut(q, labels=labels, allow_duplicates=True)
 
 
-def load_resolved_results(input_path: Path) -> pd.DataFrame:
-    df = pd.read_parquet(input_path)
-    df = df[df["first_target_hit"].notna()].copy()
-    df["target"] = (df["first_target_hit"] == "box").astype(int)
-    return df.reset_index(drop=True)
+def load_resolved_results(input_path: Path) -> pl.DataFrame:
+    df = pl.read_parquet(input_path)
+    df = df.filter(pl.col("first_target_hit").is_not_null())
+    df = df.with_columns((pl.col("first_target_hit") == "box").cast(pl.Int64).alias("target"))
+    return df
 
 
-def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """Engineer notebook model features and binary target."""
-    features = pd.DataFrame(index=df.index)
+def build_features(df: pl.DataFrame) -> tuple[pl.DataFrame, pl.Series]:
+    """Engineer notebook model features and binary target.
 
+    Returns a polars feature frame whose ``.columns`` is a stable label list (the
+    12 features in their original order) plus the binary target Series. The two
+    LabelEncoder columns cross the polars->numpy boundary explicitly via
+    ``.to_numpy()`` and are wrapped back into the polars frame; the session-context
+    columns are nulls, so ``fill_null(0)`` (NOT fillna) covers them.
+    """
     le_event = LabelEncoder()
-    features["event_type_encoded"] = le_event.fit_transform(df["event_type"])
+    event_type_encoded = le_event.fit_transform(df.get_column("event_type").to_numpy())
 
     le_time = LabelEncoder()
-    features["release_time_encoded"] = le_time.fit_transform(df["release_time"])
+    release_time_encoded = le_time.fit_transform(df.get_column("release_time").to_numpy())
 
-    features["first_sweep_high"] = (df["first_sweep"] == "high").astype(int)
+    features = pl.DataFrame(
+        {
+            "event_type_encoded": event_type_encoded,
+            "release_time_encoded": release_time_encoded,
+            "first_sweep_high": (df.get_column("first_sweep") == "high").cast(pl.Int64),
+            "gap_direction_encoded": df.get_column("gap_6pm_direction").replace_strict(
+                {"up": 1, "down": 0, "flat": -1}, default=-1, return_dtype=pl.Int64
+            ),
+            "range_pct": df.get_column("range_pct"),
+            "release_volume": df.get_column("release_volume"),
+            "pre_candle_range_pct": df.get_column("pre_candle_range_pct").fill_null(0),
+            "pre_candle_volume": df.get_column("pre_candle_volume").fill_null(0),
+            "dist_from_midnight_open_pct": df.get_column("dist_from_midnight_open_pct").fill_null(0),
+            "dist_from_6pm_open_pct": df.get_column("dist_from_6pm_open_pct").fill_null(0),
+            "gap_6pm_pct": df.get_column("gap_6pm_pct").fill_null(0),
+            "time_to_first_sweep": df.get_column("time_to_first_sweep"),
+        }
+    )
 
-    gap_dir_map = {"up": 1, "down": 0, "flat": -1}
-    features["gap_direction_encoded"] = df["gap_6pm_direction"].map(gap_dir_map).fillna(-1).astype(int)
-
-    features["range_pct"] = df["range_pct"]
-    features["release_volume"] = df["release_volume"]
-    features["pre_candle_range_pct"] = df["pre_candle_range_pct"].fillna(0)
-    features["pre_candle_volume"] = df["pre_candle_volume"].fillna(0)
-    features["dist_from_midnight_open_pct"] = df["dist_from_midnight_open_pct"].fillna(0)
-    features["dist_from_6pm_open_pct"] = df["dist_from_6pm_open_pct"].fillna(0)
-    features["gap_6pm_pct"] = df["gap_6pm_pct"].fillna(0)
-    features["time_to_first_sweep"] = df["time_to_first_sweep"]
-
-    y = df["target"]
+    y = df.get_column("target")
     return features, y
 
 
-def cv_folds(y: pd.Series, desired: int = 5) -> int:
+def cv_folds(y: pl.Series, desired: int = 5) -> int:
+    """Cap CV folds at the smallest class count; polars-only (uses value_counts)."""
     class_counts = y.value_counts()
-    if class_counts.empty:
+    if class_counts.height == 0:
         return 0
-    return int(max(0, min(desired, class_counts.min())))
+    min_count = int(class_counts.get_column("count").min())
+    return int(max(0, min(desired, min_count)))
 
 
 def print_cv_score(name: str, model, X: pd.DataFrame, y: pd.Series) -> None:
