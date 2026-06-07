@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Core Validation & Hardening
-status: Phase 5 complete (awaiting milestone close)
-last_updated: "2026-06-07T06:30:00.000Z"
-last_activity: 2026-06-07 — Phase 5 executed as direct GSD fixes (9/9 requirements, 29/29 tests green)
+milestone: none
+milestone_name: (between milestones — run /gsd-new-milestone)
+status: v1.1 shipped (archived 2026-06-07); no milestone in progress
+last_updated: "2026-06-07T07:20:00.000Z"
+last_activity: 2026-06-07 — v1.1 Core Validation & Hardening completed and archived (tagged v1.1)
 progress:
-  total_phases: 1
-  completed_phases: 1
+  total_phases: 0
+  completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 100
+  percent: 0
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-07)
 
 **Core value:** The post-news-release sweep methodology is the asset; everything serves keeping that research correct and easy to extend.
-**Current focus:** v1.1 Phase 5 — Core Validation & Hardening (direct-execution; lock the sweep kernel under direct tests, fix the two validity bugs, clear hygiene debt)
+**Current focus:** Between milestones — v1.1 shipped. Plan the next cycle with `/gsd-new-milestone` (leading candidate: deferred structure work — STRUCT-01 shared-utils extraction, STRUCT-02 CWD-independent paths, STRUCT-03 package layout).
 
 ## Current Position
 
-Phase: Phase 5 — Core Validation & Hardening (complete, direct-execution)
-Plan: Direct-execution (no per-phase plans) — 6 atomic fix commits
-Status: All 9 requirements delivered. pytest 29/29 green (16 new tests). main.py smoke-run preserved the core methodology numbers (80.6% / 52.2% / 45.7%). Awaiting milestone close.
-Last activity: 2026-06-07 — Phase 5 executed as direct GSD fixes (TEST-01/02/03, VALID-01/02/03, HYG-01/02, QUAL-01)
+Phase: None — v1.1 Core Validation & Hardening shipped and archived 2026-06-07.
+Plan: n/a (no milestone in progress)
+Status: v1.0 (Polars Migration) and v1.1 (Core Validation & Hardening) both shipped. Suite 29/29 green; the sweep kernel is now directly tested; the two real validity bugs are fixed. Awaiting next-milestone definition.
+Last activity: 2026-06-07 — v1.1 archived (ROADMAP + REQUIREMENTS to milestones/, MILESTONES.md + RETROSPECTIVE.md updated, tagged v1.1)
 
 ## Performance Metrics
 
@@ -109,10 +109,11 @@ Items acknowledged and carried forward / out of this milestone's scope:
 ## Session Continuity
 
 Last session: 2026-06-07
-Stopped at: Phase 5 complete — all 9 requirements delivered as direct GSD fixes (6 commits); suite 29/29 green
+Stopped at: v1.1 milestone closed — archives written, MILESTONES.md + RETROSPECTIVE.md updated, REQUIREMENTS.md removed (fresh for next milestone), tagged v1.1
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 5 is complete (9/9 requirements, 29/29 tests green). Run `/gsd-complete-milestone` to archive v1.1 — or `/gsd-verify-work` for conversational UAT first.
+- v1.1 is shipped and archived. Start the next cycle: `/clear` then `/gsd-new-milestone` (questioning → research → requirements → roadmap). Leading candidate is the deferred structure work (STRUCT-01/02/03).
+- Tag `v1.1` is created locally; push it with `git push origin v1.1` if/when desired (remote: `origin`).
 - Optional follow-up (not done this milestone): regenerate the downstream charts/CSVs (`exploration.py`, `causal_analysis.py`, `forward_returns.py`, `injection.py`) against the freshly rebuilt `sweep_analysis_results.parquet`.

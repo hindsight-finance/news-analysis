@@ -14,3 +14,20 @@
 - injection.py runs entirely on polars: a pandas-free, headless-safe pipeline whose release-candle lookup is a pure-polars exact-match (with_row_index + inner-join) replacing the linear boolean-mask scan, with a time-bounded is_between 10-minute window — regenerating per-event range/volume histograms for 67 event types.
 
 ---
+
+## v1.1 Core Validation & Hardening (Shipped: 2026-06-07)
+
+**Phases completed:** 1 phase (Phase 5, direct execution), 9 requirements, ~8 atomic fix commits
+
+**Tests:** 13 → 29 passing (16 new); suite green. `main.py` smoke-run preserved the core methodology numbers (80.6% opposite swept, 52.2% momentum-first, 45.7% reversal-first).
+
+**Key accomplishments:**
+
+- Locked the sweep-methodology core under direct tests for the first time: `analyze_event` high/low sweep identification + reversal-vs-momentum-box resolution on controlled fixtures (TEST-01), `main.py` session-context / gap features (TEST-02), and `injection.py`'s lookup/range functions — `build_release_index`, `get_release_candle_data`, `get_10min_range`, `calculate_percentage_range` (TEST-03) — testing the asset itself, not just the loaders around it.
+- Fixed the hardcoded `16:59` ET prior-close magic minute (`main.py`) by resolving the prior-session close via `get_last_candle_before`, so short/holiday sessions no longer silently miss (VALID-01).
+- Made analysis runs honest about coverage: `analyze_event` takes an optional `drops` Counter and `main()` prints a dropped-event summary line instead of silently skipping events via `return None` / `continue` (VALID-02).
+- Confirmed and closed the legacy `loc`/`iloc` bug as already eliminated by the v1.0 polars migration — `grep` for `.loc[`/`.iloc[` is empty repo-wide, `get_candles_until_eod` is pure-polars positional slicing, and a regression test guards it (VALID-03, no code change needed).
+- Cleared hygiene/quality debt: removed the 4 stale root-level PNGs and gitignored `/*.png` as chart-output policy (HYG-01); narrowed the global `warnings.filterwarnings("ignore")` in `causal_analysis.py` to ConvergenceWarning / UndefinedMetricWarning around the emitting call (QUAL-01); refreshed `README.md` for the polars era (HYG-02).
+- Delivered the whole milestone as direct GSD fixes (no per-phase discuss/plan/execute), mirroring the v1.0 precedent for mechanical phases — without touching the methodology logic.
+
+---

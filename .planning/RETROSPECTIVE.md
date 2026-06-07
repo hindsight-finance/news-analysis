@@ -42,6 +42,45 @@
 
 ---
 
+## Milestone: v1.1 — Core Validation & Hardening
+
+**Shipped:** 2026-06-07
+**Phases:** 1 (Phase 5, direct) | **Plans:** 0 on disk (direct fixes) | **Sessions:** 1 (2026-06-07)
+
+### What Was Built
+- Direct tests for the sweep-methodology core that v1.0 had ported untested: `analyze_event` high/low sweep + reversal-vs-momentum resolution (TEST-01), `main.py` session-context/gap features (TEST-02), and `injection.py` lookup/range functions (TEST-03). Suite grew 13 → 29 (16 new), all green.
+- Two real validity fixes: prior-session close resolved without the hardcoded `16:59` ET magic minute via `get_last_candle_before` (VALID-01); dropped events (missing release/future candle) now counted via an optional `drops` Counter and reported in a `main()` summary line instead of being silently skipped (VALID-02).
+- `loc`/`iloc` bug confirmed already eliminated by the v1.0 migration and closed with no code change (VALID-03).
+- Hygiene/quality: 4 stale root PNGs removed + `/*.png` gitignored (HYG-01); `causal_analysis.py`'s global `filterwarnings("ignore")` narrowed to the specific sklearn warnings around the emitting call (QUAL-01); README refreshed for the polars era (HYG-02).
+
+### What Worked
+- **Harden-after-migrate sequencing.** Adding the direct test net immediately after the trusted v1.0 port closed the one real risk that port took on (untested kernel) — and the new tests passed against the ported code, retroactively validating the migrate-first bet.
+- **Direct execution again fit the work.** Nine small, well-understood fixes ran as atomic commits with no per-phase ceremony — the same pattern that worked for v1.0 Phases 3 & 4.
+- **Smoke-run as the methodology guardrail.** Re-running `main.py` and checking the core numbers (80.6% / 52.2% / 45.7%) confirmed the hardening did not disturb the methodology.
+- **Triage-and-close as a first-class outcome.** VALID-03 was resolved by *verifying* the migration had already fixed it and recording the closure — cheaper and more honest than a speculative re-fix.
+
+### What Was Inefficient
+- Same direct-execution tooling gap as v1.0: with no on-disk plans/summaries, `roadmap.analyze` reports the phase at 0% / progress 0% even though `disk_status` is `complete` — readiness has to be judged from requirements + tests, not the progress number.
+- The milestone-archive CLI (`milestone.complete`) adds little value for direct-execution milestones (no SUMMARY.md files to harvest), so archives were authored by hand for full control.
+
+### Patterns Established
+- **Optional `drops` Counter threaded into a kernel function** as the idiom for surfacing silently-skipped records without changing the happy path.
+- **`get_last_candle_before`** as the way to resolve a prior-session boundary, replacing wall-clock magic minutes that break on short/holiday sessions.
+- **Scoped warning suppression** (specific warning category, wrapped around the emitting call) instead of a module-level global filter.
+- **Confirm-and-close** for bugs a prior milestone already eliminated: prove it with a grep + a guarding test, record the closure, ship no code.
+
+### Key Lessons
+1. Migrate-first only pays off if the test net actually follows — v1.1 is where that debt was honoured, and it came back green, closing the loop the v1.0 retrospective opened.
+2. For lean hardening milestones, hand-authored archives beat the SDK archiver: the CLI assumes SUMMARY.md files that direct execution never produces.
+3. A validity item can legitimately resolve to "already fixed, here's the proof" — budget triage outcomes, not just code outcomes.
+
+### Cost Observations
+- Model mix: predominantly opus (quality model profile).
+- Sessions: 1 (2026-06-07); ~8 atomic fix commits.
+- Notable: full milestone (9 requirements, 16 new tests) completed in a single short session via direct fixes.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -49,13 +88,17 @@
 | Milestone | Sessions | Phases | Key Change |
 |-----------|----------|--------|------------|
 | v1.0 | 1 | 4 | First GSD milestone; migrate-first with a smoke-harness gate; later phases run directly to drop ceremony |
+| v1.1 | 1 | 1 | Harden-after-migrate; whole milestone run as direct fixes; hand-authored archives over the SDK archiver |
 
 ### Cumulative Quality
 
 | Milestone | Tests | Coverage | Zero-Dep Additions |
 |-----------|-------|----------|-------------------|
 | v1.0 | 13 passing | partial (data loading, forward-returns math, exploration/causal utils) | dropped pandas + pyarrow; net dependency reduction |
+| v1.1 | 29 passing (+16) | core now direct-tested (`analyze_event`, session-context/gap, `injection.py` lookup/range) | none — hardening milestone |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. _(pending a second milestone to cross-validate)_
+1. **Direct execution fits mechanical phases — but breaks progress tooling.** Both milestones ran their mechanical phases directly; both saw `roadmap.analyze` undercount progress (no on-disk plans/summaries). Judge readiness by requirements + green tests, not the progress percentage.
+2. **Migrate-first is only safe when the test net follows.** v1.0 took the untested-port risk; v1.1 paid it down and the suite came back green — the bet only closes when hardening actually happens.
+3. **The quality model profile (opus) cleared both milestones in single sessions.** Small, well-scoped, single-session milestones are the emerging cadence for this project.
