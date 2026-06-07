@@ -22,6 +22,35 @@ OUTPUT_FILE = DATA_DIR / "sweep_analysis_results.parquet"
 # Trading day end (ET)
 TRADING_DAY_END = time(16, 0)
 
+# Pinned 21-column output data contract (names + dtypes, in on-disk order). Passing
+# this explicitly to pl.DataFrame(...) prevents dict-inference dtype drift
+# (RESEARCH Pitfall 2): event_datetime must stay Datetime(ns, UTC), pre_candle_volume
+# must stay Float64, release_volume must stay Int64. Consumed by exploration.py and
+# causal_analysis.py.
+CONTRACT_SCHEMA = {
+    "event_type": pl.String,
+    "event_datetime": pl.Datetime("ns", "UTC"),
+    "release_time": pl.String,
+    "data_high": pl.Float64,
+    "data_low": pl.Float64,
+    "range": pl.Float64,
+    "range_pct": pl.Float64,
+    "first_sweep": pl.String,
+    "time_to_first_sweep": pl.Float64,
+    "opposite_swept": pl.Boolean,
+    "time_to_opposite_sweep": pl.Float64,
+    "synthetic_box_breached": pl.Boolean,
+    "first_target_hit": pl.String,
+    "mae_before_reversal": pl.Float64,
+    "pre_candle_range_pct": pl.Float64,
+    "pre_candle_volume": pl.Float64,
+    "dist_from_midnight_open_pct": pl.Float64,
+    "dist_from_6pm_open_pct": pl.Float64,
+    "gap_6pm_pct": pl.Float64,
+    "gap_6pm_direction": pl.String,
+    "release_volume": pl.Int64,
+}
+
 
 def timestamp_ns_utc(dt: datetime) -> int:
     """Convert a python datetime to integer UTC nanoseconds (no float rounding).
@@ -130,7 +159,7 @@ def get_candle_at_time(nq: pl.DataFrame, lookups: dict, target_et: datetime) -> 
     return nq.row(pos, named=True) if pos is not None else None
 
 
-def get_session_context(nq: pd.DataFrame, release_candle: pd.Series) -> dict:
+def get_session_context(nq: pl.DataFrame, lookups: dict, release_candle: dict) -> dict:
     """
     Extract session context features:
     - 8:29 candle (pre-news)
@@ -138,10 +167,10 @@ def get_session_context(nq: pd.DataFrame, release_candle: pd.Series) -> dict:
     - 6pm open (18:00 ET prior day)
     - 6pm gap (open vs prior close)
     """
-    release_et = release_candle['DateTime_ET']
+    release_et = release_candle['DateTime_ET']  # naive python datetime (ET)
     release_date = release_et.date()
     release_price = release_candle['Open']
-    
+
     context = {
         'pre_candle_range_pct': None,
         'pre_candle_volume': None,
@@ -151,63 +180,64 @@ def get_session_context(nq: pd.DataFrame, release_candle: pd.Series) -> dict:
         'gap_6pm_direction': None,
         'release_volume': release_candle['Volume'],
     }
-    
+
     # 8:29 candle (1 minute before 8:30 news)
     pre_news_time = release_et.replace(hour=8, minute=29, second=0, microsecond=0)
-    pre_candle = get_candle_at_time(nq, pre_news_time)
+    pre_candle = get_candle_at_time(nq, lookups, pre_news_time)
     if pre_candle is not None:
         pre_range = pre_candle['High'] - pre_candle['Low']
         context['pre_candle_range_pct'] = (pre_range / pre_candle['Open']) * 100
         context['pre_candle_volume'] = pre_candle['Volume']
-    
+
     # Midnight open (00:00 ET same day)
-    midnight_time = pd.Timestamp(release_date) + pd.Timedelta(hours=0)
-    midnight_candle = get_candle_at_time(nq, midnight_time)
+    midnight_time = datetime.combine(release_date, time(0, 0))
+    midnight_candle = get_candle_at_time(nq, lookups, midnight_time)
     if midnight_candle is not None:
         midnight_open = midnight_candle['Open']
         context['dist_from_midnight_open_pct'] = ((release_price - midnight_open) / midnight_open) * 100
-    
+
     # 6pm open (18:00 ET prior day = start of Globex session)
-    prior_day = release_date - pd.Timedelta(days=1)
-    six_pm_time = pd.Timestamp(prior_day) + pd.Timedelta(hours=18)
-    six_pm_candle = get_candle_at_time(nq, six_pm_time)
+    prior_day = release_date - timedelta(days=1)
+    six_pm_time = datetime.combine(prior_day, time(18, 0))
+    six_pm_candle = get_candle_at_time(nq, lookups, six_pm_time)
     if six_pm_candle is not None:
         six_pm_open = six_pm_candle['Open']
         context['dist_from_6pm_open_pct'] = ((release_price - six_pm_open) / six_pm_open) * 100
-        
+
         # 6pm gap: compare 6pm open to prior session close (find 4:59 PM or last candle before 5 PM)
-        prior_close_time = pd.Timestamp(prior_day) + pd.Timedelta(hours=16, minutes=59)
-        prior_close_candle = get_candle_at_time(nq, prior_close_time)
+        prior_close_time = datetime.combine(prior_day, time(16, 59))
+        prior_close_candle = get_candle_at_time(nq, lookups, prior_close_time)
         if prior_close_candle is not None:
             prior_close = prior_close_candle['Close']
             gap_pct = ((six_pm_open - prior_close) / prior_close) * 100
             context['gap_6pm_pct'] = abs(gap_pct)
             context['gap_6pm_direction'] = 'up' if gap_pct > 0 else ('down' if gap_pct < 0 else 'flat')
-    
+
     return context
 
 
-def analyze_event(nq: pd.DataFrame, event_time: pd.Timestamp, event_type: str) -> dict | None:
+def analyze_event(nq: pl.DataFrame, lookups: dict, event_time: datetime, event_type: str) -> dict | None:
     """Analyze a single news event for sweep behavior."""
-    
+
     # Get release candle
-    release_candle = get_release_candle(nq, event_time)
+    release_candle = get_release_candle(nq, lookups, event_time)
     if release_candle is None:
         return None
-    
+
     data_high = release_candle['High']
     data_low = release_candle['Low']
     range_size = data_high - data_low
     range_pct = (range_size / release_candle['Open']) * 100
-    
+
     # Get subsequent candles until end of day
-    subsequent = get_candles_until_eod(nq, event_time)
-    if subsequent.empty:
+    subsequent = get_candles_until_eod(nq, lookups, event_time)
+    if subsequent.is_empty():
         return None
-    
-    highs = subsequent['High'].to_numpy()
-    lows = subsequent['Low'].to_numpy()
-    times = subsequent['DateTime_UTC'].to_numpy()
+
+    highs = subsequent.get_column('High').to_numpy()
+    lows = subsequent.get_column('Low').to_numpy()
+    # Force us->ns so the timing deltas below are in the right unit (Pitfall 1).
+    times = subsequent.get_column('DateTime_UTC').to_numpy().astype('datetime64[ns]')
 
     high_hits = highs > data_high
     low_hits = lows < data_low
@@ -226,16 +256,19 @@ def analyze_event(nq: pd.DataFrame, event_time: pd.Timestamp, event_type: str) -
         first_sweep = 'low'
         first_sweep_pos = low_pos
 
-    first_sweep_time = pd.Timestamp(times[first_sweep_pos])
+    # event_time is a tz-aware UTC datetime; anchor it as epoch-ns naive datetime64
+    # (matching `times`, which are UTC wall-clock naive ns) to keep deltas pandas-free.
+    event_ns = np.datetime64(timestamp_ns_utc(event_time), 'ns')
+    first_sweep_time = times[first_sweep_pos]
     opposite_swept = high_swept and low_swept
-    opposite_sweep_time = pd.Timestamp(times[max(high_pos, low_pos)]) if opposite_swept else None
+    opposite_sweep_time = times[max(high_pos, low_pos)] if opposite_swept else None
 
-    # Calculate time metrics
-    time_to_first_sweep = (first_sweep_time - event_time).total_seconds() / 60  # minutes
+    # Calculate time metrics (minutes), via numpy datetime64[ns] deltas
+    time_to_first_sweep = float((first_sweep_time - event_ns) / np.timedelta64(1, 'm'))
 
     time_to_opposite_sweep = None
     if opposite_swept and opposite_sweep_time is not None:
-        time_to_opposite_sweep = (opposite_sweep_time - first_sweep_time).total_seconds() / 60
+        time_to_opposite_sweep = float((opposite_sweep_time - first_sweep_time) / np.timedelta64(1, 'm'))
 
     # Determine synthetic box level
     if first_sweep == 'high':
@@ -266,10 +299,10 @@ def analyze_event(nq: pd.DataFrame, event_time: pd.Timestamp, event_type: str) -
     opposite_hit_pos = int(np.argmax(opposite_hits)) if opposite_hits.any() else None
 
     if box_hit_pos is not None:
-        box_hit_time = pd.Timestamp(post_times[box_hit_pos])
+        box_hit_time = post_times[box_hit_pos]
         synthetic_box_breached = True
     if opposite_hit_pos is not None:
-        opposite_hit_time = pd.Timestamp(post_times[opposite_hit_pos])
+        opposite_hit_time = post_times[opposite_hit_pos]
 
     if box_hit_pos is not None and (opposite_hit_pos is None or box_hit_pos <= opposite_hit_pos):
         first_target_hit = 'box'
@@ -287,7 +320,7 @@ def analyze_event(nq: pd.DataFrame, event_time: pd.Timestamp, event_type: str) -
     release_time_str = release_candle['DateTime_ET'].strftime('%H:%M')
     
     # Get session context features
-    session_context = get_session_context(nq, release_candle)
+    session_context = get_session_context(nq, lookups, release_candle)
     
     result = {
         'event_type': event_type,
@@ -314,80 +347,95 @@ def analyze_event(nq: pd.DataFrame, event_time: pd.Timestamp, event_type: str) -
 
 def main():
     print("Loading data...")
-    events, nq = load_data()
-    
-    print(f"Analyzing {len(events)} news events...")
-    
+    events, nq, lookups = load_data()
+
+    print(f"Analyzing {events.height} news events...")
+
     results = []
-    for _, event in events.iterrows():
-        result = analyze_event(nq, event['datetime_utc'], event['title'])
+    for event in events.iter_rows(named=True):
+        result = analyze_event(nq, lookups, event['datetime_utc'], event['title'])
         if result is not None:
             results.append(result)
-    
+
     print(f"Successfully analyzed {len(results)} events")
-    
-    # Convert to DataFrame
-    df = pd.DataFrame(results)
-    
-    # Save results
-    df.to_parquet(OUTPUT_FILE, index=False)
+
+    # Build the DataFrame with the pinned contract schema (prevents dtype drift).
+    df = pl.DataFrame(results, schema=CONTRACT_SCHEMA)
+
+    # Save results (native polars writer; no index kwarg, no pyarrow).
+    df.write_parquet(OUTPUT_FILE)
     print(f"\nResults saved to: {OUTPUT_FILE}")
-    
+
     # Print summary statistics
     print("\n" + "=" * 60)
     print("SUMMARY STATISTICS")
     print("=" * 60)
-    
-    print(f"\nTotal events analyzed: {len(df)}")
-    print(f"First sweep HIGH: {(df['first_sweep'] == 'high').sum()} ({(df['first_sweep'] == 'high').mean()*100:.1f}%)")
-    print(f"First sweep LOW: {(df['first_sweep'] == 'low').sum()} ({(df['first_sweep'] == 'low').mean()*100:.1f}%)")
-    
+
+    n = df.height
+    first_high = df.filter(pl.col('first_sweep') == 'high').height
+    first_low = df.filter(pl.col('first_sweep') == 'low').height
+    print(f"\nTotal events analyzed: {n}")
+    print(f"First sweep HIGH: {first_high} ({first_high / n * 100:.1f}%)")
+    print(f"First sweep LOW: {first_low} ({first_low / n * 100:.1f}%)")
+
     print(f"\n--- Reversal Success Rate ---")
-    print(f"Opposite side swept: {df['opposite_swept'].sum()} / {len(df)} ({df['opposite_swept'].mean()*100:.1f}%)")
-    
+    opposite_sum = int(df.get_column('opposite_swept').sum())
+    print(f"Opposite side swept: {opposite_sum} / {n} ({opposite_sum / n * 100:.1f}%)")
+
     print(f"\n--- First Target Hit (Momentum vs Reversal) ---")
-    momentum_wins = (df['first_target_hit'] == 'box').sum()
-    reversal_wins = (df['first_target_hit'] == 'opposite').sum()
-    neither = df['first_target_hit'].isna().sum()
+    momentum_wins = df.filter(pl.col('first_target_hit') == 'box').height
+    reversal_wins = df.filter(pl.col('first_target_hit') == 'opposite').height
+    neither = int(df.get_column('first_target_hit').is_null().sum())
     total_resolved = momentum_wins + reversal_wins
-    print(f"Momentum play (box first): {momentum_wins} / {len(df)} ({momentum_wins/len(df)*100:.1f}%)")
-    print(f"Reversal play (opposite first): {reversal_wins} / {len(df)} ({reversal_wins/len(df)*100:.1f}%)")
-    print(f"Neither hit by EOD: {neither} / {len(df)} ({neither/len(df)*100:.1f}%)")
+    print(f"Momentum play (box first): {momentum_wins} / {n} ({momentum_wins / n * 100:.1f}%)")
+    print(f"Reversal play (opposite first): {reversal_wins} / {n} ({reversal_wins / n * 100:.1f}%)")
+    print(f"Neither hit by EOD: {neither} / {n} ({neither / n * 100:.1f}%)")
     if total_resolved > 0:
-        print(f"Of resolved trades: Momentum {momentum_wins/total_resolved*100:.1f}% vs Reversal {reversal_wins/total_resolved*100:.1f}%")
-    
+        print(f"Of resolved trades: Momentum {momentum_wins / total_resolved * 100:.1f}% vs Reversal {reversal_wins / total_resolved * 100:.1f}%")
+
     print(f"\n--- Synthetic Box Breach ---")
-    print(f"Breached (at any point): {df['synthetic_box_breached'].sum()} / {len(df)} ({df['synthetic_box_breached'].mean()*100:.1f}%)")
-    
+    breached = int(df.get_column('synthetic_box_breached').sum())
+    print(f"Breached (at any point): {breached} / {n} ({breached / n * 100:.1f}%)")
+
     print(f"\n--- Timing (minutes) ---")
-    print(f"Avg time to first sweep: {df['time_to_first_sweep'].mean():.1f}")
-    successful = df[df['opposite_swept']]
-    if len(successful) > 0:
-        print(f"Avg time to opposite sweep (when successful): {successful['time_to_opposite_sweep'].mean():.1f}")
-    
+    print(f"Avg time to first sweep: {df.get_column('time_to_first_sweep').mean():.1f}")
+    successful = df.filter(pl.col('opposite_swept'))
+    if successful.height > 0:
+        print(f"Avg time to opposite sweep (when successful): {successful.get_column('time_to_opposite_sweep').mean():.1f}")
+
     print(f"\n--- MAE (in range units) ---")
-    print(f"Avg MAE before reversal: {df['mae_before_reversal'].mean():.2f}")
-    print(f"Median MAE before reversal: {df['mae_before_reversal'].median():.2f}")
-    
+    print(f"Avg MAE before reversal: {df.get_column('mae_before_reversal').mean():.2f}")
+    print(f"Median MAE before reversal: {df.get_column('mae_before_reversal').median():.2f}")
+
     # Breakdown by event type
     print(f"\n--- By Event Type ---")
-    by_event = df.groupby('event_type').agg({
-        'opposite_swept': ['sum', 'count', 'mean'],
-        'time_to_first_sweep': 'mean',
-        'mae_before_reversal': 'mean'
-    }).round(2)
-    by_event.columns = ['opposite_swept', 'total', 'reversal_rate', 'avg_time_to_1st_sweep', 'avg_mae']
-    by_event = by_event.sort_values('reversal_rate', ascending=False)
-    print(by_event.to_string())
-    
+    by_event = (
+        df.group_by('event_type')
+        .agg(
+            pl.col('opposite_swept').sum().alias('opposite_swept'),
+            pl.len().alias('total'),
+            pl.col('opposite_swept').mean().alias('reversal_rate'),
+            pl.col('time_to_first_sweep').mean().alias('avg_time_to_1st_sweep'),
+            pl.col('mae_before_reversal').mean().alias('avg_mae'),
+        )
+        .sort('reversal_rate', descending=True)
+    )
+    with pl.Config(tbl_rows=-1, tbl_cols=-1):
+        print(by_event)
+
     # Breakdown by release time
     print(f"\n--- By Release Time ---")
-    by_time = df.groupby('release_time').agg({
-        'opposite_swept': ['sum', 'count', 'mean'],
-    }).round(2)
-    by_time.columns = ['opposite_swept', 'total', 'reversal_rate']
-    by_time = by_time.sort_values('reversal_rate', ascending=False)
-    print(by_time.to_string())
+    by_time = (
+        df.group_by('release_time')
+        .agg(
+            pl.col('opposite_swept').sum().alias('opposite_swept'),
+            pl.len().alias('total'),
+            pl.col('opposite_swept').mean().alias('reversal_rate'),
+        )
+        .sort('reversal_rate', descending=True)
+    )
+    with pl.Config(tbl_rows=-1, tbl_cols=-1):
+        print(by_time)
 
 
 if __name__ == "__main__":
