@@ -13,77 +13,100 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import pandas as pd
+import polars as pl
 
 
 DEFAULT_INPUT = Path("data/sweep_analysis_results.parquet")
 DEFAULT_OUTPUT_DIR = Path("charts/exploration")
 
 
-def compute_win_rates(df: pd.DataFrame, group_cols: list[str], min_count: int = 0) -> pd.DataFrame:
-    """Compute momentum/reversal rates for grouped sweep outcomes."""
-    grouped = (
-        df.groupby(group_cols, dropna=False, observed=False)
+def compute_win_rates(df: pl.DataFrame, group_cols: list[str], min_count: int = 0) -> pl.DataFrame:
+    """Compute momentum/reversal rates for grouped sweep outcomes.
+
+    Returns a polars DataFrame with the group columns plus:
+    ``total``, ``momentum_wins``, ``reversal_wins``, ``resolved``,
+    ``momentum_rate``, ``reversal_rate`` (rates are null when ``resolved == 0``).
+    polars ``group_by`` keeps null groups by default, matching the old
+    pandas ``dropna=False``.
+    """
+    return (
+        df.group_by(group_cols)
         .agg(
-            total=("first_target_hit", "size"),
-            momentum_wins=("first_target_hit", lambda x: (x == "box").sum()),
-            reversal_wins=("first_target_hit", lambda x: (x == "opposite").sum()),
+            pl.len().alias("total"),
+            (pl.col("first_target_hit") == "box").sum().alias("momentum_wins"),
+            (pl.col("first_target_hit") == "opposite").sum().alias("reversal_wins"),
         )
-        .reset_index()
+        .with_columns(
+            (pl.col("momentum_wins") + pl.col("reversal_wins")).alias("resolved")
+        )
+        .filter(pl.col("total") >= min_count)
+        .with_columns(
+            pl.when(pl.col("resolved") > 0)
+            .then(pl.col("momentum_wins") / pl.col("resolved") * 100)
+            .otherwise(None)
+            .alias("momentum_rate"),
+            pl.when(pl.col("resolved") > 0)
+            .then(pl.col("reversal_wins") / pl.col("resolved") * 100)
+            .otherwise(None)
+            .alias("reversal_rate"),
+        )
     )
-    grouped["resolved"] = grouped["momentum_wins"] + grouped["reversal_wins"]
-    grouped = grouped[grouped["total"] >= min_count].copy()
-    grouped["momentum_rate"] = (grouped["momentum_wins"] / grouped["resolved"] * 100).where(
-        grouped["resolved"] > 0
-    )
-    grouped["reversal_rate"] = (grouped["reversal_wins"] / grouped["resolved"] * 100).where(
-        grouped["resolved"] > 0
-    )
-    return grouped
 
 
-def qcut_with_fallback_labels(series: pd.Series, q: int, labels: list[str]) -> pd.Series:
-    """Quantile-cut a series, dropping labels when duplicate edges reduce bins."""
-    try:
-        return pd.qcut(series, q, labels=labels, duplicates="drop")
-    except ValueError as exc:
-        if "Bin labels must be one fewer" not in str(exc):
-            raise
-        return pd.qcut(series, q, duplicates="drop")
+def qcut_with_fallback_labels(series: pl.Series, q: int, labels: list[str]) -> pl.Series:
+    """Quantile-cut a series into ``q`` bins, returning a Categorical Series.
+
+    polars ``qcut(..., allow_duplicates=True)`` never raises on collapsed
+    (duplicate-edge) bins -- it simply assigns only the labels that map to real
+    bins -- so the old pandas ``except ValueError`` fallback is unreachable. These
+    quartile bins are display-only (range / timing reporting), not
+    methodology-critical, so exact edges need not match pandas.
+    """
+    return series.qcut(q, labels=labels, allow_duplicates=True)
 
 
-def build_summary_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Build the all-event summary table from the notebook."""
-    summary = (
-        df.groupby("event_type")
+def build_summary_table(df: pl.DataFrame) -> pl.DataFrame:
+    """Build the all-event summary table from the notebook.
+
+    Returns a polars DataFrame sorted by ``edge`` descending with the original 8
+    output columns: ``event_type``, ``n``, ``momentum_rate``, ``reversal_rate``,
+    ``edge``, ``median_mae``, ``avg_time_to_sweep``, ``avg_range_pct``.
+    """
+    return (
+        df.group_by("event_type")
         .agg(
-            n=("first_target_hit", "size"),
-            momentum=("first_target_hit", lambda x: (x == "box").sum()),
-            reversal=("first_target_hit", lambda x: (x == "opposite").sum()),
-            avg_mae=("mae_before_reversal", "mean"),
-            median_mae=("mae_before_reversal", "median"),
-            avg_time_to_sweep=("time_to_first_sweep", "mean"),
-            avg_range_pct=("range_pct", "mean"),
+            pl.len().alias("n"),
+            (pl.col("first_target_hit") == "box").sum().alias("momentum"),
+            (pl.col("first_target_hit") == "opposite").sum().alias("reversal"),
+            pl.col("mae_before_reversal").mean().alias("avg_mae"),
+            pl.col("mae_before_reversal").median().alias("median_mae"),
+            pl.col("time_to_first_sweep").mean().alias("avg_time_to_sweep"),
+            pl.col("range_pct").mean().alias("avg_range_pct"),
         )
-        .reset_index()
+        .with_columns(
+            (pl.col("momentum") + pl.col("reversal")).alias("resolved")
+        )
+        .with_columns(
+            (pl.col("momentum") / pl.col("resolved") * 100).round(1).alias("momentum_rate"),
+            (pl.col("reversal") / pl.col("resolved") * 100).round(1).alias("reversal_rate"),
+        )
+        .with_columns(
+            ((pl.col("momentum_rate") - 50).abs()).round(1).alias("edge")
+        )
+        .sort("edge", descending=True)
+        .select(
+            [
+                "event_type",
+                "n",
+                "momentum_rate",
+                "reversal_rate",
+                "edge",
+                "median_mae",
+                "avg_time_to_sweep",
+                "avg_range_pct",
+            ]
+        )
     )
-    summary["resolved"] = summary["momentum"] + summary["reversal"]
-    summary["momentum_rate"] = (summary["momentum"] / summary["resolved"] * 100).round(1)
-    summary["reversal_rate"] = (summary["reversal"] / summary["resolved"] * 100).round(1)
-    summary["edge"] = (summary["momentum_rate"] - 50).abs().round(1)
-    summary = summary.sort_values("edge", ascending=False)
-    return summary[
-        [
-            "event_type",
-            "n",
-            "momentum_rate",
-            "reversal_rate",
-            "edge",
-            "median_mae",
-            "avg_time_to_sweep",
-            "avg_range_pct",
-        ]
-    ]
 
 
 def plot_event_win_rates(by_event: pd.DataFrame, output_path: Path) -> None:
