@@ -159,6 +159,22 @@ def get_candle_at_time(nq: pl.DataFrame, lookups: dict, target_et: datetime) -> 
     return nq.row(pos, named=True) if pos is not None else None
 
 
+def get_last_candle_before(nq: pl.DataFrame, lookups: dict, target_et: datetime) -> dict | None:
+    """Return the candle with the latest DateTime_ET strictly before ``target_et``.
+
+    Used to resolve a prior session's close without assuming a specific minute
+    exists: short/holiday sessions close early and have no 16:59 candle, so we
+    take the last candle before the 18:00 ET Globex reopen rather than a hardcoded
+    time. Returns None when no candle precedes ``target_et``.
+    """
+    et_values = lookups["et_values"]
+    target_ns = int(np.datetime64(target_et, "ns").astype("int64"))
+    pos = int(np.searchsorted(et_values, target_ns, side="left"))
+    if pos == 0:
+        return None
+    return nq.row(pos - 1, named=True)
+
+
 def get_session_context(nq: pl.DataFrame, lookups: dict, release_candle: dict) -> dict:
     """
     Extract session context features:
@@ -204,10 +220,14 @@ def get_session_context(nq: pl.DataFrame, lookups: dict, release_candle: dict) -
         six_pm_open = six_pm_candle['Open']
         context['dist_from_6pm_open_pct'] = ((release_price - six_pm_open) / six_pm_open) * 100
 
-        # 6pm gap: compare 6pm open to prior session close (find 4:59 PM or last candle before 5 PM)
-        prior_close_time = datetime.combine(prior_day, time(16, 59))
-        prior_close_candle = get_candle_at_time(nq, lookups, prior_close_time)
-        if prior_close_candle is not None:
+        # 6pm gap: compare the 6pm open to the prior session's actual close — the last
+        # candle before the 18:00 ET Globex reopen. Resolving it positionally (rather
+        # than via a hardcoded 16:59 ET lookup) keeps the gap correct on short/holiday
+        # sessions that close early and have no 16:59 candle. The date guard rejects a
+        # match that falls on an earlier day (i.e. the whole prior session is missing).
+        reopen_time = datetime.combine(prior_day, time(18, 0))
+        prior_close_candle = get_last_candle_before(nq, lookups, reopen_time)
+        if prior_close_candle is not None and prior_close_candle['DateTime_ET'].date() == prior_day:
             prior_close = prior_close_candle['Close']
             gap_pct = ((six_pm_open - prior_close) / prior_close) * 100
             context['gap_6pm_pct'] = abs(gap_pct)
