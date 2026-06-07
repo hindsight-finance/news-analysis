@@ -1,8 +1,8 @@
-# Roadmap: News Analysis — Clean Foundation
+# Roadmap: News Analysis — v1.0 Polars Migration
 
 ## Overview
 
-This milestone rebuilds the codebase around the existing post-news-release sweep methodology without touching the research idea or the irreplaceable raw data. It starts by establishing a reproducible environment and a directory-independent test suite (the safety net), then performs the structural refactor (shared utilities, CWD-independent paths, clean package layout) against that net. With the structure stable, it adds direct tests for the previously-untested core logic, surfaces hidden problems (scoped warnings, documented validity bugs, observable event-dropping), and finishes by cleaning the repository and rewriting the documentation. The result is a clean, hardened, well-tested base that future research can safely grow on.
+This milestone swaps the DataFrame engine from pandas to polars across the whole codebase, migrate-first. It starts with the primary sweep pipeline — `main.py` and the two scripts that consume its `sweep_analysis_results.parquet` (`exploration.py`, `causal_analysis.py`) — porting them together so the intermediate parquet data contract never breaks mid-migration, and resolving polars' direct raw-parquet reads in the process. It then ports the two independent raw-data pipelines (`forward_returns.py`, `injection.py`), including a polars replacement for the `np.searchsorted` timestamp-lookup optimization. With every script on polars, the pytest suite is ported to assert against the ported code. Finally, pandas is removed entirely from source and the manifest, and a single-command, version-pinned polars runtime is locked in. There is no output-parity or baseline-diffing step — the port is trusted, not verified against historical pandas numbers; only the methodology logic must survive intact.
 
 ## Phases
 
@@ -12,76 +12,62 @@ This milestone rebuilds the codebase around the existing post-news-release sweep
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Reproducible Foundation** - Pinned dependency manifest and a directory-independent test suite as the refactor safety net
-- [ ] **Phase 2: Structural Refactor** - Shared utilities, CWD-independent paths, and a clean importable package layout
-- [ ] **Phase 3: Core Logic Test Coverage** - Direct unit tests for `analyze_event` and `injection.py`
-- [ ] **Phase 4: Observability & Validity Triage** - Scoped warnings, documented validity bugs, and observable event-dropping
-- [ ] **Phase 5: Repo Hygiene & Documentation** - Remove stale artifacts, set chart-output policy, and rewrite the README
+- [ ] **Phase 1: Primary Pipeline on Polars** - Port `main.py` and its two consumers, keeping the intermediate parquet contract intact and enabling direct polars parquet reads
+- [ ] **Phase 2: Independent Pipelines on Polars** - Port `forward_returns.py` and `injection.py`, including a polars timestamp-lookup replacement
+- [ ] **Phase 3: Test Suite on Polars** - Port the pytest suite (fixtures and assertions) to polars and get it green against the ported scripts
+- [ ] **Phase 4: Pandas Removal & Manifest Finalization** - Remove all remaining pandas imports and pin a reproducible, pandas-free polars runtime
 
 ## Phase Details
 
-### Phase 1: Reproducible Foundation
-**Goal**: A single command rebuilds the runtime + test environment, and the existing test suite runs reliably from any directory — establishing the safety net all later refactoring depends on.
+### Phase 1: Primary Pipeline on Polars
+**Goal**: The sweep-analysis pipeline (`main.py` → `exploration.py` + `causal_analysis.py`) runs end-to-end on polars, with the intermediate `sweep_analysis_results.parquet` data contract intact and the sweep methodology logic ported faithfully.
 **Depends on**: Nothing (first phase)
-**Requirements**: REPRO-01, TEST-03
+**Requirements**: MIGRATE-01, MIGRATE-02, MIGRATE-03, ENV-02
 **Success Criteria** (what must be TRUE):
-  1. A single install command rebuilds the full runtime + test environment from a version-pinned manifest
-  2. `pytest` passes when invoked from a subdirectory, not only from the project root
-  3. Committed pytest path configuration (`conftest.py` / `pyproject` pythonpath) makes test imports CWD-independent
+  1. Running `python3 main.py` on polars produces `data/sweep_analysis_results.parquet` with the sweep methodology logic (sweep direction, first-target classification, MAE, session context) ported intact
+  2. polars reads `nq_1m.parquet` and `economic_events.parquet` directly with no pandas in the read path, and the parquet backend dependency required for those reads is identified and pinned
+  3. `exploration.py` runs on polars, consuming the polars-produced sweep results and writing its win-rate, release-timing, range-quartile, and MAE chart outputs
+  4. `causal_analysis.py` runs on polars for data handling and trains its scikit-learn models via an explicit `polars → numpy` conversion at the model boundary
 **Plans**: TBD
 
-### Phase 2: Structural Refactor
-**Goal**: Consolidate the flat scripts into a clean importable package with shared utilities and CWD-independent paths, with the sweep methodology verified intact.
-**Depends on**: Phase 1
-**Requirements**: STRUCT-01, STRUCT-02, STRUCT-03
+### Phase 2: Independent Pipelines on Polars
+**Goal**: The two independent raw-data pipelines (`forward_returns.py`, `injection.py`) run on polars, with the pandas/numpy timestamp-lookup optimization replaced by a polars equivalent.
+**Depends on**: Nothing (independent of Phase 1; sequenced after it)
+**Requirements**: MIGRATE-04, MIGRATE-05
 **Success Criteria** (what must be TRUE):
-  1. `ensure_utc`, `find_sorted_pos`, timestamp helpers, and `qcut_with_fallback_labels` live in one importable module, with no duplicated copies remaining across any script
-  2. Every script resolves its data and output paths independent of the current working directory (runnable from anywhere)
-  3. Analysis code is organized into a clean importable package with a consistent entry-point pattern across scripts
-  4. The existing test suite still passes after the restructure (sweep methodology unchanged)
+  1. Running `python3 forward_returns.py` on polars produces its multi-horizon return and MAE/MFE charts and `forward_returns_by_event.csv`
+  2. The `np.searchsorted` timestamp-lookup optimization in `forward_returns.py` is replaced with a polars equivalent, so candle lookups no longer depend on pandas
+  3. Running `python3 injection.py` on polars produces its per-event release-candle and 10-minute range histograms, with range calculation and histogram inputs computed in polars
 **Plans**: TBD
 
-### Phase 3: Core Logic Test Coverage
-**Goal**: Put direct unit tests around the previously-untested core research logic so future changes have a verification signal.
-**Depends on**: Phase 2
-**Requirements**: TEST-01, TEST-02
+### Phase 3: Test Suite on Polars
+**Goal**: The existing pytest suite is ported to polars and passes against the ported scripts, restoring the verification signal under the new engine.
+**Depends on**: Phases 1 and 2 (tests assert against the ported scripts)
+**Requirements**: TEST-01
 **Success Criteria** (what must be TRUE):
-  1. `analyze_event` has direct unit tests covering sweep direction, first-target classification, MAE, and session-context features
-  2. `injection.py` has unit tests covering its range calculation and output generation
-  3. The full suite (new + existing tests) passes from any directory
+  1. All three test modules (`test_main_data_loading.py`, `test_forward_returns.py`, `test_analysis_scripts.py`) build fixtures and make assertions using polars
+  2. No test fixture constructs data with pandas (`pd.DataFrame` / `pd.to_datetime` removed from the test suite)
+  3. `pytest` runs green against the polars-ported scripts
 **Plans**: TBD
 
-### Phase 4: Observability & Validity Triage
-**Goal**: Stop hiding problems — scope warning handling, document the known validity bugs at their code sites, and surface silent event-dropping at runtime.
-**Depends on**: Phase 3
-**Requirements**: QUAL-01, VALID-01, VALID-02
+### Phase 4: Pandas Removal & Manifest Finalization
+**Goal**: pandas is fully removed from source and the dependency manifest, and a single install command rebuilds a version-pinned, pandas-free polars runtime + test environment.
+**Depends on**: Phases 1, 2, and 3 (pandas can only be removed once every script and test is ported)
+**Requirements**: MIGRATE-06, ENV-01
 **Success Criteria** (what must be TRUE):
-  1. The global `warnings.filterwarnings("ignore")` is replaced with scoped, category-specific handling, so unrelated warnings surface again
-  2. All three known validity bugs (hardcoded 16:59 ET prior-close, silent event-dropping, `loc`/`iloc` mix in `get_candles_until_eod`) are documented at their code sites with a fix-or-defer decision recorded, so none is silently inherited
-  3. The count of skipped/dropped events is reported at runtime, making silent event-dropping observable
-**Plans**: TBD
-
-> Note: Per milestone scoping, behavior-changing numeric fixes for the VALID-01 bugs are decided during `/gsd-discuss-phase`, not mandated by this roadmap. This phase guarantees the bugs are surfaced and triaged.
-
-### Phase 5: Repo Hygiene & Documentation
-**Goal**: Leave a clean repository with documentation that accurately reflects the rebuilt structure, setup, and usage.
-**Depends on**: Phase 4
-**Requirements**: HYG-01, HYG-02, HYG-03
-**Success Criteria** (what must be TRUE):
-  1. Stale root-level chart PNGs are removed and a clear chart-output tracking policy is in place (gitignored or curated)
-  2. No Jupyter notebooks remain in the repository (scripts are canonical)
-  3. The README accurately reflects the cleaned structure, setup, and usage
+  1. A repo-wide search for `import pandas` (including `import pandas as pd`) across all scripts and tests returns zero matches
+  2. A version-pinned dependency manifest rebuilds the full polars-based runtime + test environment from a single install command, with pandas absent from the manifest
+  3. A clean install from the manifest yields an environment that runs the full `pytest` suite green
 **Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Reproducible Foundation | 0/TBD | Not started | - |
-| 2. Structural Refactor | 0/TBD | Not started | - |
-| 3. Core Logic Test Coverage | 0/TBD | Not started | - |
-| 4. Observability & Validity Triage | 0/TBD | Not started | - |
-| 5. Repo Hygiene & Documentation | 0/TBD | Not started | - |
+| 1. Primary Pipeline on Polars | 0/TBD | Not started | - |
+| 2. Independent Pipelines on Polars | 0/TBD | Not started | - |
+| 3. Test Suite on Polars | 0/TBD | Not started | - |
+| 4. Pandas Removal & Manifest Finalization | 0/TBD | Not started | - |

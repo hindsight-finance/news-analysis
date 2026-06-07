@@ -3,10 +3,10 @@ gsd_state_version: "1.0'  # placeholder; syncStateFrontmatter overwrites on firs
 milestone: v1.0
 milestone_name: Polars Migration
 status: planning
-last_updated: "2026-06-07T01:05:16.132Z"
+last_updated: "2026-06-07T02:15:00.000Z"
 last_activity: 2026-06-07
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,15 +19,17 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-06-07)
 
-**Core value:** The post-news-release sweep methodology is the asset; everything serves keeping that research correct, reproducible, and easy to extend.
-**Current focus:** Phase 1 — Reproducible Foundation
+**Core value:** The post-news-release sweep methodology is the asset; everything serves keeping that research correct and easy to extend.
+**Current focus:** Phase 1 — Primary Pipeline on Polars
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-07 — Milestone v1.0 started
+Phase: 1 of 4 (Primary Pipeline on Polars)
+Plan: — of — in current phase
+Status: Ready to plan
+Last activity: 2026-06-07 — Roadmap created (4 phases, 9/9 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -57,10 +59,10 @@ Last activity: 2026-06-07 — Milestone v1.0 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- Refactor in place rather than rewrite — preserve methodology + 16 years of findings at lowest risk
-- Scope this milestone to cleanup only — defer all new research to later milestones
-- Drop baseline / oracle output comparison — the idea matters, not reproducing exact numbers
-- Decide each VALID-01 validity-bug fix per phase — number-changing fixes get focused attention in phase discussion
+- Pivot the project to polars, dropping pandas — polars is the chosen DataFrame engine going forward
+- Migrate-first — port the DataFrame layer before adding a unit-test net; methodology-integrity risk of porting untested core logic accepted
+- No baseline / output parity for the migration — the idea matters, not reproducing exact pandas numbers; numeric drift from the engine swap is acceptable
+- Defer shared-utils extraction, CWD-independent paths, package restructure, and validity-bug triage to Future (post-migration)
 
 ### Pending Todos
 
@@ -73,18 +75,24 @@ None yet.
 [Issues that affect future work]
 
 - Raw data (`data/nq_1m.parquet`, `data/economic_events.parquet`) is irreplaceable and gitignored — no phase may delete or modify it
-- `analyze_event` and `injection.py` core logic carry no direct tests until Phase 3 — restructuring in Phase 2 relies on the existing suite + end-to-end runs as the net
+- pandas must stay installed until Phase 4 — ENV-01 (drop pandas) and MIGRATE-06 (no `import pandas`) only land once every script and test is ported, or the codebase breaks mid-migration
+- `main.py` (MIGRATE-01) must be ported before/with its consumers `exploration.py` + `causal_analysis.py` so the `sweep_analysis_results.parquet` data contract stays intact
+- Duplicated utils (`ensure_utc`, `find_sorted_pos`, `qcut_with_fallback_labels`) are NOT extracted this milestone — each script's port includes porting its own inline copies
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Items acknowledged and carried forward / out of this milestone's scope:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
+| Structure | STRUCT-01/02/03: shared utils, CWD-independent paths, package layout | Deferred to post-migration | 2026-06-07 |
+| Testing | TEST-FUT-01/02: direct core-logic tests, CWD-independent suite | Deferred to post-migration | 2026-06-07 |
+| Quality/Validity | QUAL-01, VALID-01/02: scoped warnings, validity-bug triage | Deferred to post-migration | 2026-06-07 |
+| Hygiene | HYG-01/02/03: PNG cleanup, notebook removal, README rewrite | Deferred to post-migration | 2026-06-07 |
 | Reproducibility | REPRO-02: data-fetching / ingestion pipeline | Deferred to v2 | 2026-06-07 |
 
 ## Session Continuity
 
 Last session: 2026-06-07
-Stopped at: Roadmap created (5 phases, 13/13 requirements mapped); STATE.md initialized
+Stopped at: Roadmap created for v1.0 Polars Migration (4 phases, 9/9 requirements mapped); STATE.md and REQUIREMENTS.md traceability updated
 Resume file: None

@@ -73,20 +73,20 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MIGRATE-01 | TBD | Pending |
-| MIGRATE-02 | TBD | Pending |
-| MIGRATE-03 | TBD | Pending |
-| MIGRATE-04 | TBD | Pending |
-| MIGRATE-05 | TBD | Pending |
-| MIGRATE-06 | TBD | Pending |
-| ENV-01 | TBD | Pending |
-| ENV-02 | TBD | Pending |
-| TEST-01 | TBD | Pending |
+| MIGRATE-01 | Phase 1 | Pending |
+| MIGRATE-02 | Phase 1 | Pending |
+| MIGRATE-03 | Phase 1 | Pending |
+| MIGRATE-04 | Phase 2 | Pending |
+| MIGRATE-05 | Phase 2 | Pending |
+| MIGRATE-06 | Phase 4 | Pending |
+| ENV-01 | Phase 4 | Pending |
+| ENV-02 | Phase 1 | Pending |
+| TEST-01 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 9 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 9
+- Mapped to phases: 9 (100%)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-07 for v1.0 Polars Migration*
