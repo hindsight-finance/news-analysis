@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Polars Migration
-status: milestone_complete
-last_updated: 2026-06-07
-last_activity: 2026-06-07
+status: Awaiting next milestone
+last_updated: "2026-06-07T05:30:10.899Z"
+last_activity: 2026-06-07 — Milestone v1.0 completed and archived
 progress:
   total_phases: 4
   completed_phases: 4
   total_plans: 6
   completed_plans: 6
   percent: 100
-stopped_at: Milestone v1.0 complete — Phases 3 & 4 finished directly (pandas removed, tests green, requirements.txt pinned)
 ---
 
 # Project State
@@ -21,16 +20,14 @@ stopped_at: Milestone v1.0 complete — Phases 3 & 4 finished directly (pandas r
 See: .planning/PROJECT.md (updated 2026-06-07)
 
 **Core value:** The post-news-release sweep methodology is the asset; everything serves keeping that research correct and easy to extend.
-**Current focus:** Phase 3 — test suite on polars
+**Current focus:** v1.0 shipped — planning next milestone (`/gsd-new-milestone`)
 
 ## Current Position
 
-Phase: 4 (final) — complete
-Plan: n/a (Phases 3 & 4 done directly, no per-phase plans)
-Status: Milestone v1.0 complete
-Last activity: 2026-06-07
-
-Progress: [██████████] 100%
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-07 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -89,10 +86,11 @@ None yet.
 
 [Issues that affect future work]
 
-- Raw data (`data/nq_1m.parquet`, `data/economic_events.parquet`) is irreplaceable and gitignored — no phase may delete or modify it
-- pandas must stay installed until Phase 4 — ENV-01 (drop pandas) and MIGRATE-06 (no `import pandas`) only land once every script and test is ported, or the codebase breaks mid-migration
-- `main.py` (MIGRATE-01) must be ported before/with its consumers `exploration.py` + `causal_analysis.py` so the `sweep_analysis_results.parquet` data contract stays intact
-- Duplicated utils (`ensure_utc`, `find_sorted_pos`, `qcut_with_fallback_labels`) are NOT extracted this milestone — each script's port includes porting its own inline copies
+- Raw data (`data/nq_1m.parquet`, `data/economic_events.parquet`) is irreplaceable and gitignored — no phase may delete or modify it (standing constraint)
+
+_v1.0 migration-sequencing blockers (pandas-until-Phase-4, main.py-before-consumers, mid-migration contract integrity) are all resolved — migration complete._
+
+_Carried-forward tech debt: duplicated utils (`ensure_utc`, `find_sorted_pos`, `qcut_with_fallback_labels`) were NOT extracted this milestone — each script holds its own inline copy (STRUCT-01, deferred to next milestone)._
 
 ## Deferred Items
 
@@ -111,3 +109,7 @@ Items acknowledged and carried forward / out of this milestone's scope:
 Last session: 2026-06-07T04:44:11.185Z
 Stopped at: Completed 02-02-PLAN.md
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

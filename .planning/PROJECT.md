@@ -4,7 +4,7 @@
 
 A Python research codebase that studies NQ (Nasdaq-100 futures) 1-minute price behavior around US economic news releases. The central research idea: after a news-release candle's high or low is swept, does price *reverse* to sweep the opposite side, or *continue* into a momentum box?
 
-The current milestone — **Polars Migration (v1.0)** — replaces the codebase's DataFrame engine. pandas is dropped and **polars** takes its place across all five scripts and the test suite. The research *idea* and methodology are preserved; only the underlying data-handling library changes.
+As of **v1.0 (Polars Migration, shipped 2026-06-07)**, the codebase runs on **polars** — pandas has been dropped entirely across all five scripts and the test suite. The research *idea* and methodology were preserved through the port; only the underlying data-handling library changed.
 
 ## Core Value
 
@@ -12,16 +12,16 @@ The post-news-release sweep methodology is the asset. Everything in this project
 
 For this milestone specifically: every script and test runs on polars instead of pandas, with the sweep methodology *logic* ported faithfully. Exact historical output reproduction is explicitly **not** a goal — the idea matters, not matching the old pandas numbers.
 
-## Current Milestone: v1.0 Polars Migration
+## Current State
 
-**Goal:** Replace pandas with polars as the DataFrame engine across the entire codebase — porting all five scripts and the test suite — and drop pandas.
+**Shipped:** v1.0 Polars Migration (2026-06-07). pandas has been fully replaced by polars across all five scripts and the test suite, and dropped from the dependency manifest.
 
-**Target features:**
-- Port all five scripts (`main.py`, `exploration.py`, `causal_analysis.py`, `forward_returns.py`, `injection.py`) from pandas → polars
-- Port the existing pytest suite to polars
-- Rewrite the dependency manifest so polars replaces pandas (drop pandas); pin a reproducible polars-based runtime + test environment; resolve the parquet backend and the `polars → numpy` boundary at the scikit-learn interface in `causal_analysis.py`
+- All five scripts (`main.py`, `exploration.py`, `causal_analysis.py`, `forward_returns.py`, `injection.py`) run on polars; the sweep methodology logic was ported intact.
+- pytest suite ported to polars (13/13 green); zero `import pandas` repo-wide.
+- Pinned, pandas-free `requirements.txt` (polars==1.40.1 / numpy / matplotlib / scikit-learn / pytest) — pyarrow also dropped via native polars parquet I/O.
+- ~1,965 LOC Python across 5 scripts + 3 test modules.
 
-**Sequencing:** Migrate-first — port the DataFrame layer before adding a unit-test net. The methodology-integrity risk of porting untested core logic (`analyze_event`, `injection.py`) is accepted. No baseline/output-parity diffing — the port is trusted, not verified against historical pandas numbers.
+**Next milestone:** not yet defined — run `/gsd-new-milestone`. Strongest candidates are the deferred **Future** items below (shared-utils extraction, CWD-independent paths, clean package structure, direct core-logic tests).
 
 ## Requirements
 
@@ -36,14 +36,18 @@ For this milestone specifically: every script and test runs on polars instead of
 - ✓ Injection analysis — per-event release-candle and 10-minute range histograms — existing (`injection.py`)
 - ✓ pytest suite — partial coverage of data loading, forward-returns math, and exploration/causal utilities — existing
 
+<!-- Shipped this milestone (v1.0 Polars Migration). -->
+
+- ✓ All five scripts ported pandas → polars, sweep methodology logic intact (`main.py`, `exploration.py`, `causal_analysis.py`, `forward_returns.py`, `injection.py`) — v1.0
+- ✓ scikit-learn boundary in `causal_analysis.py` handled via a single explicit `polars → numpy` conversion at `.fit()`/`cross_val_score` — v1.0
+- ✓ pytest suite ported to polars and passing — v1.0 (13/13 green, zero `import pandas` in tests)
+- ✓ Dependency manifest rewritten: polars replaces pandas, pyarrow dropped (native polars parquet I/O), reproducible runtime pinned — v1.0
+
 ### Active
 
-<!-- This milestone: Polars Migration. Port the DataFrame engine; drop pandas. -->
+<!-- No milestone in progress. Run /gsd-new-milestone to define the next one. -->
 
-- [x] Scripts ported from pandas to polars, sweep methodology logic intact — **5/5 done** (Phase 1: `main.py`, `exploration.py`, `causal_analysis.py`; **Phase 2: `forward_returns.py` + `injection.py`**). All script-level pandas usage is now gone; the test suite is the last pandas holdout (Phase 3).
-- [x] scikit-learn boundary in `causal_analysis.py` handled via explicit `polars → numpy` conversion — **Validated in Phase 1: Primary Pipeline on Polars**
-- [x] Existing pytest suite ported to polars and passing (Phase 3) — 13/13 green, all fixtures/assertions polars, zero `import pandas` in tests
-- [x] Dependency manifest rewritten: polars replaces pandas (pandas removed); reproducible runtime + test environment pinned; parquet backend resolved (Phase 4) — `requirements.txt` pins polars/numpy/matplotlib/scikit-learn/pytest; pandas **and** pyarrow dropped (native polars parquet I/O); repo-wide `import pandas` grep is zero
+_(None — v1.0 shipped. The next milestone is not yet scoped; see **Future** for the leading candidates.)_
 
 ### Future
 
@@ -90,8 +94,10 @@ For this milestone specifically: every script and test runs on polars instead of
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Pivot the project to polars, dropping pandas | polars is the chosen DataFrame engine going forward | — Active (v1.0) |
-| Migrate-first — port before adding the unit-test net | Speed; user accepted the methodology-integrity risk of porting untested core logic | — Active (v1.0) |
+| Pivot the project to polars, dropping pandas | polars is the chosen DataFrame engine going forward | ✓ Shipped v1.0 — pandas fully removed |
+| Migrate-first — port before adding the unit-test net | Speed; user accepted the methodology-integrity risk of porting untested core logic | ✓ Shipped v1.0 — port held; tests green post-migration |
+| Phases 3 & 4 executed directly (no per-phase GSD plans) | Drop ceremony for mechanical test-port + pandas-removal work | ✓ Good — both verified complete |
+| `main.py` keeps its numpy `searchsorted` lookup (D-03) | Lone numpy lookup holdout by decision; consumers use polars `build_timestamp_index` | ✓ Good |
 | No baseline / output parity for the migration | The research idea matters, not reproducing exact pandas numbers | — Locked |
 | ~~Refactor in place (cleanup-only Clean Foundation milestone)~~ | Superseded by the polars pivot | — Superseded 2026-06-07 |
 | ~~Scope first milestone to cleanup only~~ | Superseded by the polars pivot; cleanup items moved to Future | — Superseded 2026-06-07 |
@@ -114,4 +120,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-07 — Milestone v1.0 (Polars Migration) COMPLETE. Phases 3 & 4 finished directly (no per-phase GSD plans, by user request to drop ceremony): the pytest suite is fully ported to polars (13/13 green), pandas is removed repo-wide (zero `import pandas`), and a pinned `requirements.txt` (polars/numpy/matplotlib/scikit-learn/pytest — no pandas, no pyarrow) rebuilds the runtime. All five scripts + the test suite now run on polars; the sweep methodology is intact.*
+*Last updated: 2026-06-07 after v1.0 milestone — Polars Migration SHIPPED and archived. All five scripts + the test suite run on polars; pandas removed repo-wide; pinned pandas-free `requirements.txt`; sweep methodology intact. Roadmap and requirements archived to `.planning/milestones/v1.0-*`; tagged `v1.0`. Next: `/gsd-new-milestone`.*
