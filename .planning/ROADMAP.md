@@ -28,7 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. polars reads `nq_1m.parquet` and `economic_events.parquet` directly with no pandas in the read path, and the parquet backend dependency required for those reads is identified and pinned
   3. `exploration.py` runs on polars, consuming the polars-produced sweep results and writing its win-rate, release-timing, range-quartile, and MAE chart outputs
   4. `causal_analysis.py` runs on polars for data handling and trains its scikit-learn models via an explicit `polars → numpy` conversion at the model boundary
-**Plans**: TBD
+**Plans**: 4 plans (3 waves)
+- [ ] 01-01-PLAN.md — Wave 1: Phase-1 integration smoke harness (21-col contract + native-read + no-pandas checks), separate from the pandas `tests/` suite
+- [ ] 01-02-PLAN.md — Wave 2: Port `main.py` sweep engine to polars (MIGRATE-01, ENV-02) — native reads, threaded lookups (no `.attrs`), us↔ns reconcile, pinned 21-col CONTRACT_SCHEMA, methodology kernel verbatim
+- [ ] 01-03-PLAN.md — Wave 3: Port `exploration.py` to polars (MIGRATE-02) — win-rate/timing/quartile/MAE aggregations + charts + summary CSV
+- [ ] 01-04-PLAN.md — Wave 3: Port `causal_analysis.py` to polars (MIGRATE-03) — explicit `polars → numpy` model boundary + event_stats CSV + charts
 
 ### Phase 2: Independent Pipelines on Polars
 **Goal**: The two independent raw-data pipelines (`forward_returns.py`, `injection.py`) run on polars, with the pandas/numpy timestamp-lookup optimization replaced by a polars equivalent.
@@ -67,7 +71,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Primary Pipeline on Polars | 0/TBD | Not started | - |
+| 1. Primary Pipeline on Polars | 0/4 | Not started | - |
 | 2. Independent Pipelines on Polars | 0/TBD | Not started | - |
 | 3. Test Suite on Polars | 0/TBD | Not started | - |
 | 4. Pandas Removal & Manifest Finalization | 0/TBD | Not started | - |
