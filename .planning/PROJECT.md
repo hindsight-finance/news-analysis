@@ -40,10 +40,10 @@ For this milestone specifically: every script and test runs on polars instead of
 
 <!-- This milestone: Polars Migration. Port the DataFrame engine; drop pandas. -->
 
-- [ ] All five scripts ported from pandas to polars, with the sweep methodology logic intact
-- [ ] scikit-learn boundary in `causal_analysis.py` handled via explicit `polars → numpy` conversion
-- [ ] Existing pytest suite ported to polars and passing
-- [ ] Dependency manifest rewritten: polars replaces pandas (pandas removed); reproducible runtime + test environment pinned; parquet backend resolved
+- [~] Scripts ported from pandas to polars, sweep methodology logic intact — **3/5 done in Phase 1** (`main.py`, `exploration.py`, `causal_analysis.py`); `forward_returns.py` + `injection.py` remain (Phase 2)
+- [x] scikit-learn boundary in `causal_analysis.py` handled via explicit `polars → numpy` conversion — **Validated in Phase 1: Primary Pipeline on Polars**
+- [ ] Existing pytest suite ported to polars and passing (Phase 3)
+- [ ] Dependency manifest rewritten: polars replaces pandas (pandas removed); reproducible runtime + test environment pinned; parquet backend resolved — Phase 1 confirmed native polars parquet reads (`use_pyarrow=False`); manifest pinning + pandas removal remain (Phase 4)
 
 ### Future
 
@@ -114,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-07 — pivoted to v1.0 Polars Migration (replaces unshipped Clean Foundation)*
+*Last updated: 2026-06-07 — Phase 1 (Primary Pipeline on Polars) complete: `main.py` → `exploration.py` + `causal_analysis.py` now run on polars; 21-col `sweep_analysis_results.parquet` contract intact; methodology preserved.*
