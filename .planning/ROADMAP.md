@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Polars Migration** — Phases 1-4 (shipped 2026-06-07) — [archive](milestones/v1.0-ROADMAP.md)
-- 🔄 **v1.1 Core Validation & Hardening** — Phase 5 (in progress) — direct-execution
+- ✅ **v1.1 Core Validation & Hardening** — Phase 5 (complete 2026-06-07) — direct-execution
 
 ## Phases
 
@@ -21,7 +21,7 @@ Swapped the DataFrame engine from pandas to polars across the whole codebase, mi
 
 ### v1.1 Core Validation & Hardening (Phase 5)
 
-- [ ] **Phase 5: Core Validation & Hardening** — direct-execution: lock the sweep kernel (`analyze_event`) under direct tests, fix the two real validity bugs, and clear hygiene debt without changing the methodology logic.
+- [x] **Phase 5: Core Validation & Hardening** — direct-execution: locked the sweep kernel (`analyze_event`) under direct tests, fixed the two real validity bugs, and cleared hygiene debt without changing the methodology logic. (9/9 requirements, 29/29 tests green, 2026-06-07.)
 
 ## Phase Details
 
@@ -46,4 +46,4 @@ Swapped the DataFrame engine from pandas to polars across the whole codebase, mi
 | 2. Independent Pipelines on Polars         | v1.0      | 2/2            | Complete | 2026-06-07 |
 | 3. Test Suite on Polars                    | v1.0      | direct         | Complete | 2026-06-07 |
 | 4. Pandas Removal & Manifest Finalization  | v1.0      | direct         | Complete | 2026-06-07 |
-| 5. Core Validation & Hardening             | v1.1      | direct         | Planned  | -          |
+| 5. Core Validation & Hardening             | v1.1      | direct         | Complete | 2026-06-07 |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Core Validation & Hardening
-status: planning
-last_updated: "2026-06-07T05:52:49.509Z"
-last_activity: 2026-06-07
+status: Phase 5 complete (awaiting milestone close)
+last_updated: "2026-06-07T06:30:00.000Z"
+last_activity: 2026-06-07 — Phase 5 executed as direct GSD fixes (9/9 requirements, 29/29 tests green)
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 0
   completed_plans: 0
-  percent: 0
+  percent: 100
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-07)
 
 ## Current Position
 
-Phase: Phase 5 — Core Validation & Hardening (planning)
-Plan: Direct-execution (no per-phase plans)
-Status: Roadmap created — ready for direct GSD fixes (9 requirements → Phase 5)
-Last activity: 2026-06-07 — Roadmap for v1.1 created; Phase 5 mapped with all 9 requirements
+Phase: Phase 5 — Core Validation & Hardening (complete, direct-execution)
+Plan: Direct-execution (no per-phase plans) — 6 atomic fix commits
+Status: All 9 requirements delivered. pytest 29/29 green (16 new tests). main.py smoke-run preserved the core methodology numbers (80.6% / 52.2% / 45.7%). Awaiting milestone close.
+Last activity: 2026-06-07 — Phase 5 executed as direct GSD fixes (TEST-01/02/03, VALID-01/02/03, HYG-01/02, QUAL-01)
 
 ## Performance Metrics
 
@@ -71,6 +71,7 @@ Recent decisions affecting current work:
 - Scope v1.1 to core-test coverage + the two real validity fixes + hygiene (no new research); harden the sweep kernel ported untested in v1.0
 - Execute v1.1 as direct GSD fixes (no per-phase discuss/plan/execute) — small, mechanical, well-understood tasks; matches the v1.0 precedent of running mechanical phases directly
 - `loc`/`iloc` validity bug treated as resolved by the polars migration (VALID-03 is confirm-and-close)
+- [Phase 05]: v1.1 hardening delivered as 6 direct fixes — `analyze_event`/session-context/`injection.py` now directly tested (16 new tests, 29/29 suite); prior-close resolved via `get_last_candle_before` (no 16:59 hardcode, VALID-01); `analyze_event` takes an optional `drops` Counter and `main()` prints coverage (VALID-02); sklearn warnings scoped to ConvergenceWarning/UndefinedMetricWarning (QUAL-01); stale root PNGs removed + `/*.png` gitignored (HYG-01). `main.py` smoke-run preserved the core methodology numbers (gap features are context-only)
 - [Phase ?]: Phase-1 validation signal is integration smoke (smoke/phase1_smoke.py), not the pandas unit suite (expected red until Phase 3 / TEST-01)
 - [Phase ?]: main.py ported to polars: preserve numpy methodology kernel verbatim, port only the I/O boundary (load/lookup/extract/write)
 - [Phase ?]: Pinned output via module-level CONTRACT_SCHEMA (21 cols, ns/UTC event_datetime, Int64 release_volume, Float64 pre_candle_volume) to stop dict-inference dtype drift
@@ -107,10 +108,11 @@ Items acknowledged and carried forward / out of this milestone's scope:
 
 ## Session Continuity
 
-Last session: 2026-06-07T04:44:11.185Z
-Stopped at: Roadmap for v1.1 created (Phase 5 mapped, 9/9 requirements)
+Last session: 2026-06-07
+Stopped at: Phase 5 complete — all 9 requirements delivered as direct GSD fixes (6 commits); suite 29/29 green
 Resume file: None
 
 ## Operator Next Steps
 
-- Begin Phase 5 as direct GSD fixes — start with the test-coverage requirements (TEST-01/02/03), then the validity fixes (VALID-01/02/03), then hygiene/quality (HYG-01/02, QUAL-01).
+- Phase 5 is complete (9/9 requirements, 29/29 tests green). Run `/gsd-complete-milestone` to archive v1.1 — or `/gsd-verify-work` for conversational UAT first.
+- Optional follow-up (not done this milestone): regenerate the downstream charts/CSVs (`exploration.py`, `causal_analysis.py`, `forward_returns.py`, `injection.py`) against the freshly rebuilt `sweep_analysis_results.parquet`.
