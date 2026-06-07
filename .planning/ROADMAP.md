@@ -13,7 +13,7 @@ This milestone swaps the DataFrame engine from pandas to polars across the whole
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Primary Pipeline on Polars** - Port `main.py` and its two consumers, keeping the intermediate parquet contract intact and enabling direct polars parquet reads
+- [x] **Phase 1: Primary Pipeline on Polars** - Port `main.py` and its two consumers, keeping the intermediate parquet contract intact and enabling direct polars parquet reads (completed 2026-06-07)
 - [ ] **Phase 2: Independent Pipelines on Polars** - Port `forward_returns.py` and `injection.py`, including a polars timestamp-lookup replacement
 - [ ] **Phase 3: Test Suite on Polars** - Port the pytest suite (fixtures and assertions) to polars and get it green against the ported scripts
 - [ ] **Phase 4: Pandas Removal & Manifest Finalization** - Remove all remaining pandas imports and pin a reproducible, pandas-free polars runtime
@@ -43,7 +43,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 01-03-PLAN.md — Wave 3: Port `exploration.py` to polars (MIGRATE-02) — win-rate/timing/quartile/MAE aggregations + charts + summary CSV
-- [ ] 01-04-PLAN.md — Wave 3: Port `causal_analysis.py` to polars (MIGRATE-03) — explicit `polars → numpy` model boundary + event_stats CSV + charts
+- [x] 01-04-PLAN.md — Wave 3: Port `causal_analysis.py` to polars (MIGRATE-03) — explicit `polars → numpy` model boundary + event_stats CSV + charts
 
 ### Phase 2: Independent Pipelines on Polars
 
@@ -91,7 +91,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Primary Pipeline on Polars | 3/4 | In Progress|  |
+| 1. Primary Pipeline on Polars | 4/4 | Complete   | 2026-06-07 |
 | 2. Independent Pipelines on Polars | 0/TBD | Not started | - |
 | 3. Test Suite on Polars | 0/TBD | Not started | - |
 | 4. Pandas Removal & Manifest Finalization | 0/TBD | Not started | - |

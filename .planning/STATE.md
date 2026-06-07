@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Polars Migration
-status: executing
-last_updated: "2026-06-07T02:37:08.077Z"
+status: verifying
+last_updated: "2026-06-07T02:49:02.534Z"
 last_activity: 2026-06-07
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 0
+  completed_plans: 4
+  percent: 25
 ---
 
 # Project State
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-06-07)
 
 Phase: 01 (primary-pipeline-on-polars) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-07
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [████████░░] 75%
 | Phase 01 P01 | 9min | 1 tasks | 1 files |
 | Phase 01 P02 | 13min | 2 tasks | 1 files |
 | Phase 01 P03 | 4min | 2 tasks | 1 files |
+| Phase 01 P04 | 5min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,7 @@ Recent decisions affecting current work:
 - [Phase ?]: Pinned output via module-level CONTRACT_SCHEMA (21 cols, ns/UTC event_datetime, Int64 release_volume, Float64 pre_candle_volume) to stop dict-inference dtype drift
 - [Phase ?]: Replaced nq.attrs lookup cache with an explicitly-threaded lookups dict of ns-int64 arrays (polars has no per-frame metadata)
 - [Phase ?]: exploration.py polars port: win-rate/summary via group_by/agg + pl.when/then; qcut(allow_duplicates=True) Categorical bins (display-only); matplotlib fed via .to_numpy()/.to_list() at the boundary; printed-table order is cosmetic (hash group order), win-rate values are explicit-agg not order-dependent
+- [Phase 01]: causal_analysis.py polars port (MIGRATE-03): single explicit polars->numpy boundary at .fit()/cross_val_score; feature_names captured before to_numpy() for importance/coef/tree labels; cv_folds computed once on the polars y Series before the boundary and passed into print_cv_score to avoid value_counts-on-numpy AttributeError; all three Phase-1 scripts now pandas-free
 
 ### Pending Todos
 
@@ -101,6 +103,6 @@ Items acknowledged and carried forward / out of this milestone's scope:
 
 ## Session Continuity
 
-Last session: 2026-06-07T02:32:22.919Z
+Last session: 2026-06-07T02:46:25.366Z
 Stopped at: Completed 01-02-PLAN.md (main.py ported to polars; 21-col contract regenerated, 4792 rows)
 Resume file: None
