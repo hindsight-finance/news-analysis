@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 import polars as pl
 
 
-DEFAULT_INPUT = Path("data/sweep_analysis_results.parquet")
-DEFAULT_OUTPUT_DIR = Path("charts/exploration")
+DEFAULT_INPUT = Path(__file__).parent / "data" / "sweep_analysis_results.parquet"
+DEFAULT_OUTPUT_DIR = Path(__file__).parent / "charts" / "exploration"
 
 
 def compute_win_rates(df: pl.DataFrame, group_cols: list[str], min_count: int = 0) -> pl.DataFrame:
@@ -51,18 +51,6 @@ def compute_win_rates(df: pl.DataFrame, group_cols: list[str], min_count: int = 
             .alias("reversal_rate"),
         )
     )
-
-
-def qcut_with_fallback_labels(series: pl.Series, q: int, labels: list[str]) -> pl.Series:
-    """Quantile-cut a series into ``q`` bins, returning a Categorical Series.
-
-    polars ``qcut(..., allow_duplicates=True)`` never raises on collapsed
-    (duplicate-edge) bins -- it simply assigns only the labels that map to real
-    bins -- so the old pandas ``except ValueError`` fallback is unreachable. These
-    quartile bins are display-only (range / timing reporting), not
-    methodology-critical, so exact edges need not match pandas.
-    """
-    return series.qcut(q, labels=labels, allow_duplicates=True)
 
 
 def build_summary_table(df: pl.DataFrame) -> pl.DataFrame:
@@ -149,8 +137,8 @@ def plot_release_time_rates(by_time: pl.DataFrame, output_path: Path) -> None:
 
 def plot_range_quartile_rates(df: pl.DataFrame, output_path: Path) -> pl.DataFrame:
     working = df.with_columns(
-        qcut_with_fallback_labels(
-            df.get_column("range_pct"), 4, ["Q1 (smallest)", "Q2", "Q3", "Q4 (largest)"]
+        df.get_column("range_pct").qcut(
+            4, labels=["Q1 (smallest)", "Q2", "Q3", "Q4 (largest)"], allow_duplicates=True
         ).alias("range_quartile")
     )
     by_range = compute_win_rates(working, ["range_quartile"])
@@ -224,8 +212,8 @@ def run(input_path: Path = DEFAULT_INPUT, output_dir: Path = DEFAULT_OUTPUT_DIR,
     plot_mae_distribution(df, output_dir / "mae_distribution.png")
 
     working = df.with_columns(
-        qcut_with_fallback_labels(
-            df.get_column("time_to_first_sweep"), 4, ["Q1 (fastest)", "Q2", "Q3", "Q4 (slowest)"]
+        df.get_column("time_to_first_sweep").qcut(
+            4, labels=["Q1 (fastest)", "Q2", "Q3", "Q4 (slowest)"], allow_duplicates=True
         ).alias("time_quartile")
     )
     by_timing = compute_win_rates(working, ["time_quartile"])

@@ -1,6 +1,6 @@
 import polars as pl
 
-from exploration import build_summary_table, compute_win_rates, qcut_with_fallback_labels
+from exploration import build_summary_table, compute_win_rates
 from causal_analysis import build_features
 
 
@@ -60,9 +60,3 @@ def test_build_features_encodes_missing_context_as_zero_or_minus_one():
     assert features.row(1, named=True)["pre_candle_range_pct"] == 0
     assert features.row(1, named=True)["gap_6pm_pct"] == 0
     assert features.row(2, named=True)["gap_direction_encoded"] == -1
-
-
-def test_qcut_with_fallback_labels_handles_duplicate_bin_edges():
-    result = qcut_with_fallback_labels(pl.Series([1, 1, 1, 2, 3]), 4, ["Q1", "Q2", "Q3", "Q4"])
-    assert len(result) == 5
-    assert result.null_count() == 0

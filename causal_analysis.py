@@ -29,19 +29,8 @@ from sklearn.tree import DecisionTreeClassifier, export_text, plot_tree
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 
-DEFAULT_INPUT = Path("data/sweep_analysis_results.parquet")
-DEFAULT_OUTPUT_DIR = Path("charts/causal")
-
-
-def qcut_with_fallback_labels(series: pl.Series, q: int, labels: list[str]) -> pl.Series:
-    """Quantile-cut a series; polars resolves duplicate edges via allow_duplicates.
-
-    Unlike pandas (which raises "Bin labels must be one fewer" when duplicate edges
-    collapse bins), polars' ``Series.qcut(..., allow_duplicates=True)`` never raises:
-    it returns a Categorical assigning only the labels that map to real bins. These
-    bins are display/reporting only, so exact edges need not match pandas.
-    """
-    return series.qcut(q, labels=labels, allow_duplicates=True)
+DEFAULT_INPUT = Path(__file__).parent / "data" / "sweep_analysis_results.parquet"
+DEFAULT_OUTPUT_DIR = Path(__file__).parent / "charts" / "causal"
 
 
 def load_resolved_results(input_path: Path) -> pl.DataFrame:
@@ -270,8 +259,8 @@ def run(input_path: Path = DEFAULT_INPUT, output_dir: Path = DEFAULT_OUTPUT_DIR)
     print(gap_stats)
 
     df = df.with_columns(
-        qcut_with_fallback_labels(
-            df.get_column("dist_from_midnight_open_pct").fill_null(0), 4, ["Q1 (far below)", "Q2", "Q3", "Q4 (far above)"]
+        df.get_column("dist_from_midnight_open_pct").fill_null(0).qcut(
+            4, labels=["Q1 (far below)", "Q2", "Q3", "Q4 (far above)"], allow_duplicates=True
         ).alias("midnight_dist_quartile")
     )
     midnight_stats = df.group_by("midnight_dist_quartile").agg(pl.len().alias("n"), pl.col("target").mean().alias("momentum_rate"))

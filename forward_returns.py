@@ -17,9 +17,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-DEFAULT_EVENTS = Path("data/economic_events.parquet")
-DEFAULT_NQ = Path("data/nq_1m.parquet")
-DEFAULT_OUTPUT_DIR = Path("charts/forward_returns")
+DEFAULT_EVENTS = Path(__file__).parent / "data" / "economic_events.parquet"
+DEFAULT_NQ = Path(__file__).parent / "data" / "nq_1m.parquet"
+DEFAULT_OUTPUT_DIR = Path(__file__).parent / "charts" / "forward_returns"
 DEFAULT_HORIZONS = (15, 30, 45, 60, 90)
 
 
