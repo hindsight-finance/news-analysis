@@ -17,12 +17,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.exceptions import ConvergenceWarning, UndefinedMetricWarning
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.tree import DecisionTreeClassifier, export_text, plot_tree
 
-warnings.filterwarnings("ignore")
+# Scoped suppression (QUAL-01): silence only the expected sklearn modelling warnings
+# (LogisticRegression not converging, undefined metrics on tiny CV folds) instead of a
+# blanket filterwarnings("ignore") that would hide every unrelated warning repo-wide.
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 
 DEFAULT_INPUT = Path("data/sweep_analysis_results.parquet")
 DEFAULT_OUTPUT_DIR = Path("charts/causal")
